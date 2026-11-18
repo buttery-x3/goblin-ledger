@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react'
+import { History } from './MarketHistory.jsx'
+import { useMarketRead, refreshMarketReads } from './market-query.js'
 import './markets.css'
 
 const number = (value) => (value == null ? '—' : Number(value).toLocaleString())
@@ -25,29 +27,7 @@ const when = (t) =>
         minute: '2-digit',
       })
     : 'Unknown'
-function useData(api, path, refresh) {
-  const [result, setResult] = useState({ loading: true })
-  useEffect(() => {
-    let active = true
-    if (!path) {
-      setResult({ loading: false })
-      return
-    }
-    setResult({ loading: true })
-    api(path).then(
-      (data) => {
-        if (active) setResult({ data, loading: false })
-      },
-      (error) => {
-        if (active) setResult({ error: error.message, loading: false })
-      },
-    )
-    return () => {
-      active = false
-    }
-  }, [api, path, refresh])
-  return result
-}
+
 function useJob(api, reload) {
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState('')
@@ -102,109 +82,6 @@ function Waiting({ data, error, loading }) {
       </p>
     )
   return null
-}
-function History({ rows, method }) {
-  const [metric, setMetric] = useState('ask')
-  if (!rows?.length) return <p>Waiting for hourly observations.</p>
-  const vals = rows.map((r) => r[metric]).filter((x) => x != null)
-  const format = metric === 'ask' ? money : number
-  const min = vals.length ? Math.min(...vals) : 0,
-    max = vals.length ? Math.max(...vals) : 0
-  const lo = rows[0].t,
-    hi = rows.at(-1).t
-  const x = (t) => 12 + ((t - lo) / Math.max(1, hi - lo)) * 416
-  const y = (v) => (max === min ? 35 : 62 - ((v - min) / (max - min)) * 54)
-  return (
-    <section>
-      <div className="market-tools">
-        <strong>Hourly observations</strong>
-        <select
-          value={metric}
-          aria-label="Chart metric"
-          onChange={(e) => setMetric(e.target.value)}
-        >
-          <option value="ask">Ask per unit</option>
-          <option value="listed">Listed units</option>
-          <option value="sold">Inferred units sold</option>
-        </select>
-      </div>
-      {vals.length ? (
-        <>
-          <svg
-            className="market-chart"
-            viewBox="0 0 440 74"
-            role="img"
-            aria-label={
-              metric +
-              ' from ' +
-              when(lo) +
-              ' to ' +
-              when(hi) +
-              ', range ' +
-              format(min) +
-              ' to ' +
-              format(max)
-            }
-          >
-            {[12, 35, 60].map((n) => (
-              <line
-                key={n}
-                x1="12"
-                x2="428"
-                y1={n}
-                y2={n}
-                className="market-grid"
-              />
-            ))}
-            {rows.map((r, i) => {
-              const prev = rows[i - 1]
-              if (r[metric] == null) return null
-              const connected =
-                prev &&
-                prev[metric] != null &&
-                r.t - prev.t < 5_400_000 &&
-                (metric !== 'sold' || r.method === prev.method)
-              return (
-                <g key={r.t}>
-                  {connected && (
-                    <line
-                      x1={x(prev.t)}
-                      y1={y(prev[metric])}
-                      x2={x(r.t)}
-                      y2={y(r[metric])}
-                    />
-                  )}
-                  <circle cx={x(r.t)} cy={y(r[metric])} r="2.3">
-                    <title>
-                      {when(r.t) + ' · ' + format(r[metric]) + ' · ' + r.method}
-                    </title>
-                  </circle>
-                </g>
-              )
-            })}
-          </svg>
-          <div className="market-meta">
-            <span>
-              {when(lo)} — {when(hi)}
-            </span>
-            <span>
-              {format(min)}–{format(max)} · {vals.length}/{rows.length}{' '}
-              observations
-            </span>
-          </div>
-        </>
-      ) : (
-        <p>Flow data unavailable for this window.</p>
-      )}
-      {metric === 'sold' && (
-        <small>
-          {method
-            ? 'Provider method v' + method.v + ' from ' + when(method.since)
-            : 'Method boundary unavailable'}
-        </small>
-      )}
-    </section>
-  )
 }
 function Crosscheck({ api, id }) {
   const [state, setState] = useState({})
@@ -270,16 +147,22 @@ function Crosscheck({ api, id }) {
   )
 }
 function Detail({ id, api, mode, region, refresh, goBack }) {
-  const [quantity, setQuantity] = useState(1),
-    [local, setLocal] = useState(0)
-  const key = refresh + '-' + local
-  const { data, loading, error } = useData(
+  const [quantity, setQuantity] = useState(1)
+  const { data, loading, error } = useMarketRead(
     api,
     '/markets/' + id + '?quantity=' + quantity,
-    key,
+    mode,
+    region,
+    refresh,
   )
-  const research = useData(api, '/research?itemId=' + id, key)
-  const job = useJob(api, () => setLocal((n) => n + 1))
+  const research = useMarketRead(
+    api,
+    '/research?itemId=' + id,
+    mode,
+    region,
+    refresh,
+  )
+  const job = useJob(api, () => refreshMarketReads(api, mode, region))
   const book = data?.detail?.book,
     quote = data?.quote
   return (
@@ -321,7 +204,11 @@ function Detail({ id, api, mode, region, refresh, goBack }) {
                   : 'Awaiting a house snapshot.'}
               </p>
             )}
-            <History rows={data.history} method={data.detail?.method} />
+            <History
+              rows={data.history}
+              method={data.detail?.method}
+              articles={research.data?.items}
+            />
             <h4>Price ladder</h4>
             <div className="market-meta">
               <span>
@@ -454,17 +341,18 @@ export function Markets({
     offset = 0,
     marketItem = null,
   } = pane
-  const [local, setLocal] = useState(0)
-  const key = [mode, region, refreshKey, local].join('-')
-  const { data, loading, error } = useData(
+
+  const { data, loading, error } = useMarketRead(
     api,
     marketItem
       ? null
       : '/markets?' +
           new URLSearchParams({ q: query, sort, direction, offset, limit: 40 }),
-    key,
+    mode,
+    region,
+    refreshKey,
   )
-  const job = useJob(api, () => setLocal((n) => n + 1))
+  const job = useJob(api, () => refreshMarketReads(api, mode, region))
   if (marketItem)
     return (
       <Detail
@@ -473,7 +361,7 @@ export function Markets({
         region={region}
         api={api}
         mode={mode}
-        refresh={key}
+        refresh={refreshKey}
         goBack={() => updatePane({ marketItem: null })}
       />
     )
@@ -602,14 +490,16 @@ export function Opportunities({
     offset = 0,
     opportunityItem = null,
   } = pane
-  const key = [mode, region, refreshKey].join('-')
+
   const params = new URLSearchParams({ action, order, offset, limit: 30 })
   if (asOf && Number.isFinite(Date.parse(asOf)))
     params.set('asOf', String(Date.parse(asOf)))
-  const { data, error, loading } = useData(
+  const { data, error, loading } = useMarketRead(
     api,
     opportunityItem ? null : '/opportunities?' + params,
-    key,
+    mode,
+    region,
+    refreshKey,
   )
   if (opportunityItem)
     return (
@@ -619,7 +509,7 @@ export function Opportunities({
         region={region}
         api={api}
         mode={mode}
-        refresh={key}
+        refresh={refreshKey}
         goBack={() => updatePane({ opportunityItem: null })}
       />
     )

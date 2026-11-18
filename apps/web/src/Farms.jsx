@@ -1,4 +1,6 @@
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
+import {useReactTable} from '@tanstack/react-table';
+import {farmSort, farmTableOptions} from './farm-table.js';
 import {eligibility} from '../../../packages/domain/farms.mjs';
 import './farms.css';
 
@@ -107,10 +109,16 @@ export function Farms({api,mode,region,pane,updatePane,selectedRoute,onSelectRou
   const actor = actors.find(a => a.id === pane.actor);
   const list = compared ?? routes;
   const route = list.find(r => r.id === selectedRoute);
-  const filtered = r => (r.name+' '+r.zone+' '+r.type+' '+r.output).toLowerCase().includes(query.toLowerCase())
-    && (!pane.skillOnly || eligibility(r,actor) === 'Meets skill');
-  const visible = list.filter(r => filtered(r) || r.id === pane.revealRoute)
-    .sort((a,b) => (b.sessionGoldCopper ?? -Infinity) - (a.sessionGoldCopper ?? -Infinity));
+  const matches = useMemo(() => list.filter(r =>
+    (r.name+' '+r.zone+' '+r.type+' '+r.output).toLowerCase().includes(query.toLowerCase())
+    && (!pane.skillOnly || eligibility(r,actor)==='Meets skill')
+  ),[list,query,actor,pane.skillOnly]);
+  const filtered = r => matches.includes(r);
+  const visible = useMemo(() => list.filter(r => matches.includes(r) || r.id===pane.revealRoute),[list,matches,pane.revealRoute]);
+  const sorting = useMemo(() => farmSort(pane.farmSort),[pane.farmSort]);
+  const table = useReactTable(farmTableOptions(visible,sorting,updater => {
+    updatePane({farmSort:typeof updater==='function' ? updater(sorting) : updater});
+  }));
   const editOptions = next => updatePane({farmOptions:{...options,...next}});
   const refreshed = async (message) => {
     const result = await api('/farms/compare',{method:'POST',body:{...options,sessionMinutes:session}});
@@ -134,8 +142,12 @@ export function Farms({api,mode,region,pane,updatePane,selectedRoute,onSelectRou
       {actor && <label><input type="checkbox" checked={options.allowAggregate!==false} onChange={e => editOptions({allowAggregate:e.target.checked})}/> Use all runs if this character has none</label>}
     </div>}
     {route && pane.revealRoute && !filtered(route) && <p>Showing selected route outside filter. <button onClick={() => updatePane({revealRoute:null})}>Return to filter</button></p>}
-    <table><thead><tr><th>Route</th><th>Net / h</th><th>{session} min</th></tr></thead>
-      <tbody>{visible.map(r => <tr key={r.id} ref={r.id===selectedRoute?focus:null} className={r.id===selectedRoute?'selected':''}>
+    <table><thead><tr>{table.getAllLeafColumns().map(column => {
+      const direction=column.getIsSorted();
+      return <th key={column.id} scope="col" aria-sort={direction==='asc'?'ascending':direction==='desc'?'descending':undefined}>
+        <button className="farm-row" onClick={column.getToggleSortingHandler()}>{column.id==='session'?session+' min':column.columnDef.header}
+          {direction && <span aria-hidden="true">{direction==='asc'?' ↑':' ↓'}</span>}</button></th>;
+    })}</tr></thead><tbody>{table.getRowModel().rows.map(({original:r}) => <tr key={r.id} ref={r.id===selectedRoute?focus:null} className={r.id===selectedRoute?'selected':''}>
         <td><button className="farm-row" onClick={() => onSelectRoute(r.id)}>{r.name}</button><small>{r.zone} · {r.yieldBasis}{actor?' · '+r.sampleScope:''}</small></td>
         <td>{money(r.rateCopperPerHour)}</td><td>{money(r.sessionGoldCopper)}</td>
       </tr>)}</tbody></table>

@@ -1,0 +1,28 @@
+# Implementation and verification
+
+This is a development build. Its launch path, source capabilities and game-client evidence are tracked independently.
+
+| Area | Implemented | Verification boundary |
+|---|---|---|
+| Workspace | Named arrangements, four presets, programmable pane selection, adjustable splits, route-specific highlights, keyboard-accessible list, density and saved filters | Simulated DOM, SVG data and layout-state tests. Actual visual appearance and pointer feel await player inspection. |
+| Markets | Whole-house snapshot publication, evidence at the vendor floor, supply changes, refill detection, bounded item history and book lookups, attributed time-limited price cross-check | US contract probe and synthetic edge cases. The provider's house assignment remains provisional pending independent, time-aligned calibration. The selected home region starts unset. |
+| Farms and crafting | Two distinct Hinterlands localities and a Maraudon loop, elapsed haul entry, actor-specific yields and session returns, tier-sensitive batch costs and transformations | Original schematic locations. Scenarios and player measurements have separate provenance. The curated recipes and turn-ins do not cover every item or unlock. |
+| Characters and holdings | Folder inspection, staged addon install, background import, character snapshots, FIFO acquisitions and sales, unknown basis and manual reconciliation | Synthetic Windows installations, exports and Lua event harness. A live client running this addon build and its first natural export remain unobserved. Optional mailbox invoice capture, inferred transfers and automatic sale-to-haul matching are outstanding. |
+| Research and progression | Dated Skulk Rock guide, source revisions and linked entities, replay cutoffs, optional loopback model annotations, account challenges and per-character skill eligibility | One reviewed starter guide plus manual records. Reach, saturation, causation and offline rested projections require evidence. A live AI endpoint is optional. |
+| Operations | Persistent attempts, retry identities, failure logs, connection events, cooldowns, profile isolation, online backup and verified restore | Deterministic HTTP, SQLite and restart tests. Initial deployment has schema version 1. A later production schema upgrade must exercise the migration with real preceding schema fixtures. |
+
+## Market evidence
+
+A hosted Windows diagnostic on **18 November 2026 at 15:50:17 UTC** used the US PvP Alliance profile. The provider returned house `us-2-110`, 6,746 items and a source timestamp of `1795015501000` milliseconds UTC. The item endpoint for Dark Iron Residue (18945) returned 24 hourly observations and seven visible price tiers with no additional tiers reported. Source time and retrieval time are different fields. This diagnostic did not select the player's home region.
+
+The initial recipe response exposed an output quantity the first normalizer could not represent as a positive whole number. After the fix, a separate hosted request at 15:57:33 UTC validated 2,493 recipe records and a linked product with reagents. Uncertain yields stay unpriced. See the [archive benchmark and test method](market-verification.md).
+
+## Runtime decisions
+
+The clean Windows Node 26.13.1 build attempted `better-sqlite3@13.0.3`. Its native installation failed. The application uses the bundled `node:sqlite` interface, including the online backup API. This follows the built-in-driver exception in the development plan and removes a native compiler prerequisite.
+
+The service exposes only loopback endpoints. State-changing routes require the session cookie and request token. The browser includes a profile identifier and reacts to a change made by another tab. Expiring secondary price observations live in memory. Regular backups apply expiry for the durable market archive during recovery.
+
+## Development limits
+
+Additional adapters for credentialed Blizzard and ForeverDB.net sources remain optional future work. The current catalog and research assumptions are linked to their sources in the panels. Visual inspection and a natural in-game export are release evidence still outstanding; review and automated development integration can proceed independently.
