@@ -1,4 +1,5 @@
-import { HOUR, scanItem, tierUnits } from '../../packages/domain/market.mjs'
+import { createHash } from 'node:crypto'
+import { HOUR, SOURCE, scanItem, tierUnits } from '../../packages/domain/market.mjs'
 import { demoData } from './market-demo.mjs'
 
 const initialized = new WeakSet()
@@ -27,6 +28,8 @@ export function ensureStore({ db, mode, region }) {
       CREATE TABLE IF NOT EXISTS market_recipes(id INTEGER PRIMARY KEY,data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS market_recipe_uses(item INTEGER,recipe INTEGER,name TEXT,profession TEXT,PRIMARY KEY(item,recipe));
       CREATE TABLE IF NOT EXISTS market_vendor(id INTEGER PRIMARY KEY,price INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS market_recipe_items(id INTEGER PRIMARY KEY,name TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS market_catalog_meta(source TEXT PRIMARY KEY,revision TEXT NOT NULL,retrieved INTEGER NOT NULL,etag TEXT,modified TEXT);
     `)
     initialized.add(db)
   }
@@ -180,10 +183,11 @@ export function readDetail(profile, id) {
       .get(house.key, id)
   return row ? { ...JSON.parse(row.data), retrieved: row.retrieved } : null
 }
-export function saveCatalog(db, { entries, vendor }) {
+export function saveCatalog(db, { entries, vendor, items = [] }, retrieved = Date.now(), headers) {
+  const revision = createHash('sha256').update(JSON.stringify([entries, vendor, items])).digest('hex')
   transaction(db, () => {
     db.exec(
-      'DELETE FROM market_recipes; DELETE FROM market_recipe_uses; DELETE FROM market_vendor',
+      'DELETE FROM market_recipes; DELETE FROM market_recipe_uses; DELETE FROM market_vendor; DELETE FROM market_recipe_items',
     )
     const recipes = db.prepare('INSERT INTO market_recipes VALUES(?,?)')
     const uses = db.prepare(
@@ -196,5 +200,11 @@ export function saveCatalog(db, { entries, vendor }) {
     }
     const price = db.prepare('INSERT INTO market_vendor VALUES(?,?)')
     for (const item of vendor) price.run(item.id, item.price)
+    const name = db.prepare('INSERT INTO market_recipe_items VALUES(?,?)')
+    for (const item of items) name.run(item.id, item.name)
+    db.prepare('INSERT OR REPLACE INTO market_catalog_meta VALUES(?,?,?,?,?)').run(
+      SOURCE, revision, retrieved, headers?.get('etag')?.slice(0,512) ?? null,
+      headers?.get('last-modified')?.slice(0,128) ?? null,
+    )
   })
 }

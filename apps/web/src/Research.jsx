@@ -4,6 +4,7 @@ import {refreshMarketReads} from './market-query.js';
 import {ACTIONS,USE_KINDS} from '../../../packages/domain/research.mjs';
 import {legacyRules,LEGACY_SOURCE,RECIPE_SOURCE} from '../../../packages/domain/progression.mjs';
 import {ChoiceCalculator} from './CraftChoices.jsx';
+import {CraftCatalog} from './CraftCatalog.jsx';
 import './research.css';
 
 function useRead(api, path, refreshKey) {
@@ -189,8 +190,11 @@ export function Professions({api,refreshKey,mode,region}) {
   const refresh=[mode,region,refreshKey].join('|');
   const catalog=useRead(api,'/crafts/catalog',refresh);
   return <section className="rs-panel"><ErrorLine error={catalog.error}/>
+    {mode==='live' && <CraftCatalog key={region ?? 'unset'} api={api} region={region} refresh={refresh} money={money}/>}
     {(!catalog.data && !catalog.error) && <p>Loading recipes…</p>}
-    {catalog.data?.recipes.map(r=><Batch key={r.id} api={api} recipe={r} refresh={refresh}/>)}
+    {catalog.data?.recipes.map(r=>mode==='live'
+      ? <details key={r.id}><summary>{r.name} starter example</summary><Batch api={api} recipe={r} refresh={refresh}/></details>
+      : <Batch key={r.id} api={api} recipe={r} refresh={refresh}/>)}
     <Progression api={api} refresh={refresh}/>
     <ChoiceCalculator api={api} mode={mode} region={region}/>
   </section>;
