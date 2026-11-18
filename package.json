@@ -1,0 +1,30 @@
+{
+  "name": "goblin-ledger",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.26.2",
+  "engines": {
+    "node": "^24.15.0 || >=26.13.1 <27"
+  },
+  "scripts": {
+    "setup": "pnpm install --frozen-lockfile && pnpm build",
+    "dev": "node --watch apps/local/start.mjs",
+    "build": "vite build apps/web --outDir ../../dist --emptyOutDir",
+    "start": "node apps/local/start.mjs",
+    "check": "tsc --noEmit && node scripts/check.mjs",
+    "test": "node scripts/test.mjs",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "13.0.3",
+    "fastify": "5.12.7",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "jsdom": "30.1.3"
+  }
+}
