@@ -1,0 +1,17 @@
+.personal-pane {padding:.35rem .65rem; min-width:0; font-size:var(--table-font-size,13px);font-variant-numeric:tabular-nums}
+.personal-pane p {line-height:1.45;margin:.45rem 0}
+.personal-pane details {border-bottom:1px solid #66787546;padding:.35rem 0}
+.personal-pane summary {cursor:pointer;padding:.15rem 0}
+.personal-pane summary span {opacity:.8}
+.personal-pane dl {display:grid;grid-template-columns:minmax(6rem,auto) 1fr;gap:.3rem .8rem;margin:.6rem 0}
+.personal-pane dt {opacity:.7}
+.personal-pane dd {margin:0;overflow-wrap:anywhere}
+.personal-form {display:flex;flex-wrap:wrap;gap:.45rem;align-items:end;margin:.5rem 0}
+.personal-pane label {display:inline-flex;flex-direction:column;gap:.25rem;max-width:100%}
+.personal-pane input,.personal-pane select {max-width:100%;min-width:0}
+.personal-form input {width:10rem}
+.personal-pane button {cursor:pointer}
+.personal-notice {color:var(--accent,#d3ba80)}
+.personal-browser ul {padding:0 .5rem;max-height:14rem;overflow:auto;list-style:none}
+.personal-browser strong {display:block;overflow-wrap:anywhere}
+.personal-setup h3 {margin:.5rem 0}
