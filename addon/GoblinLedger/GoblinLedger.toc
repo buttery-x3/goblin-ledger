@@ -1,0 +1,6 @@
+## Interface: 16001
+## Title: Goblin Ledger
+## Notes: Local account observations for Goblin Ledger
+## Version: 0.1.0
+## SavedVariables: GoblinLedgerDB
+GoblinLedger.lua

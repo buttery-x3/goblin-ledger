@@ -220,7 +220,13 @@ export function normalizeRecipes(raw) {
       name: r.name,
       profession: r.prof,
       output,
-      quantity: integer(r.qty, 'output quantity', 1),
+      quantity: Number.isSafeInteger(r.qty) && r.qty > 0 ? r.qty : null,
+      reportedQuantity:
+        typeof r.qty === 'number' && Number.isFinite(r.qty) ? r.qty : null,
+      yieldStatus:
+        Number.isSafeInteger(r.qty) && r.qty > 0
+          ? 'provider-reported'
+          : 'unresolved',
       inputs,
     }
   })
