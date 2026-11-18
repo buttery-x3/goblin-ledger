@@ -86,8 +86,7 @@ export function History({ rows, method, articles }) {
           <summary>Research dates on the chart</summary>
           <p>
             <small>
-              Green bands show the source’s calendar day on a UTC date grid.
-              Publication times within those days are unknown.
+              Green bands mark the UTC day of each source date or recorded hand-in.
             </small>
           </p>
           <ul>
@@ -95,9 +94,9 @@ export function History({ rows, method, articles }) {
               d.events.map((event, i) => (
                 <li key={d.day + '-' + i}>
                   {d.day} · {event.kind} ·{' '}
-                  <a href={event.url} target="_blank" rel="noreferrer">
+                  {event.url ? <a href={event.url} target="_blank" rel="noreferrer">
                     {event.title}
-                  </a>
+                  </a> : event.title}
                 </li>
               )),
             )}

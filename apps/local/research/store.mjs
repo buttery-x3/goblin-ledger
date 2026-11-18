@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {guideRecord, normalizeArticle} from '../../../packages/domain/research.mjs';
+import {guideRecord, itemUseThesis, normalizeArticle, utcInstant} from '../../../packages/domain/research.mjs';
 import {challengeCatalog} from '../../../packages/domain/progression.mjs';
 
 const initialized = new WeakSet();
@@ -30,9 +30,12 @@ export function initResearch(db) {
 const hash = text => createHash('sha256').update(text).digest('hex');
 const articleId = url => hash(url).slice(0,32);
 
-export function writeRevision(db,input,at = new Date().toISOString()) {
+export function writeRevision(db,input,at = new Date().toISOString(),baseRevision) {
   initResearch(db);
-  const body = normalizeArticle(input), id = articleId(body.url);
+  at = utcInstant(at);
+  const body = normalizeArticle(input), id = body.localId ? 'local-'+body.localId : articleId(body.url);
+  if (body.observedAt && body.observedAt > at)
+    throw Object.assign(new Error('An observed turn-in requires a time in the past.'),{statusCode:400});
   const serialized = JSON.stringify(body), fingerprint = hash(serialized);
   db.exec('BEGIN IMMEDIATE');
   try {
@@ -41,6 +44,8 @@ export function writeRevision(db,input,at = new Date().toISOString()) {
       db.exec('COMMIT');
       return {id,revision:last.revision,changed:false};
     }
+    if (baseRevision !== undefined && baseRevision !== last?.revision)
+      throw Object.assign(new Error('Evidence was revised. Reload before saving your correction.'),{statusCode:409});
     // A system clock adjustment must never change the order revisions became known.
     const availableAt = last && at < last.available_at ? last.available_at : at;
     const revision = (last?.revision ?? 0)+1;
@@ -52,16 +57,22 @@ export function writeRevision(db,input,at = new Date().toISOString()) {
 
 export function articles(db,{asOf,routeId = null,itemId = null,includeHistory = false} = {}) {
   initResearch(db);
-  asOf ??= new Date().toISOString();
+  asOf = utcInstant(asOf ?? new Date().toISOString());
+  const day = asOf.slice(0,10);
   const rows = db.prepare(`WITH dated AS (
     SELECT r.*,ROW_NUMBER() OVER (PARTITION BY r.id ORDER BY r.revision DESC) rn
     FROM research_revisions r WHERE r.available_at <= ?
+      AND coalesce(json_extract(body,'$.publishedOn'),'') <= ?
+      AND coalesce(json_extract(body,'$.revisedOn'),'') <= ?
+      AND coalesce(json_extract(body,'$.observedAt'),'') <= ?
   ) SELECT d.*,n.note,n.generated_at FROM dated d LEFT JOIN research_notes n
     ON n.id=d.id AND n.revision=d.revision AND n.generated_at<=?
-    WHERE (? OR rn=1) ORDER BY d.available_at DESC,d.revision DESC,d.id`).all(asOf,asOf,Number(includeHistory));
-  return rows.map(row => ({...JSON.parse(row.body),id:row.id,revision:row.revision,firstSeenAt:row.first_seen,
-    availableAt:row.available_at,datePrecision:'calendar date',annotation:row.note ? {...JSON.parse(row.note),generatedAt:row.generated_at} : null})).filter(a =>
-    (!routeId || a.routeId === routeId) && (!itemId || a.itemIds.includes(itemId)) && (!a.publishedOn || a.publishedOn <= asOf.slice(0,10)));
+    WHERE (? OR rn=1) ORDER BY d.available_at DESC,d.revision DESC,d.id`).all(asOf,day,day,asOf,asOf,Number(includeHistory));
+  return rows.map(row => {
+    const article = JSON.parse(row.body);
+    return {...article,id:row.id,revision:row.revision,firstSeenAt:row.first_seen,availableAt:row.available_at,
+      useThesis:itemUseThesis(article,asOf),datePrecision:'calendar date',annotation:row.note ? {...JSON.parse(row.note),generatedAt:row.generated_at} : null};
+  }).filter(a => (!routeId || a.routeId === routeId) && (!itemId || a.itemIds.includes(itemId)));
 }
 
 export function accountProgress(db,pool) {
