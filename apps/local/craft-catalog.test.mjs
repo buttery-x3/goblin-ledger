@@ -40,7 +40,7 @@ function suite(t,raw=catalog) {
     const res=await app.inject({method:payload===undefined?'GET':'POST',url:'/api/v1/'+path,payload});
     assert.equal(res.statusCode,code,res.body);return res.json();
   }
-  return {profile,db,calls,call};
+  return {profile,db,calls,call,app};
 }
 
 test('bulk import browses 2,493 recipes locally, searches linked items and follows both directions',async t=>{
@@ -115,4 +115,21 @@ test('preexisting catalog survives additive tables and a failed refresh leaves t
   assert.equal(recipe.catalog.retrieved,time);assert.equal(recipe.inputs[0].name,'Silk thread');
   saveCatalog(db,{...normalized,entries:[{...normalized.entries[0],inputs:[{id:51,qty:Number.MAX_SAFE_INTEGER}]}]},time);
   await call('crafts/imported/10/quote',{quantity:2},400);
+});
+
+test('quote accepts zero owned units and rejects malformed JSON shapes and noncanonical item counts',async t=>{
+  const {app,call}=suite(t);
+  await call('markets/recipes/refresh',{});
+  const url='/api/v1/crafts/imported/10/quote';
+  for (const body of [null,false,7,'invalid',[],{quantity:1,owned:null},{quantity:1,owned:true},
+    {quantity:1,owned:[0,4]},{quantity:1,owned:{'0':0}},{quantity:1,owned:{'01':0}},
+    {quantity:1,owned:{'1e2':1}},{quantity:1,owned:{'9007199254740992':0}},
+    {quantity:1,owned:{51:null}},{quantity:1,owned:{51:'1'}},{quantity:1,owned:{99:-1}},
+    {quantity:1,owned:{51:0.1}},{quantity:1,owned:{51:1000001}}]) {
+    const res=await app.inject({url,method:'POST',headers:{'content-type':'application/json'},payload:JSON.stringify(body)});
+    assert.equal(res.statusCode,400,JSON.stringify(body));
+    assert.match(res.json().message,/JSON object|Owned|item ID/);
+  }
+  const valid=await call('crafts/imported/10/quote',{quantity:1,owned:{51:0}});
+  assert.equal(valid.rows[0].owned,0);assert.equal(valid.rows[0].shortfall,4);
 });

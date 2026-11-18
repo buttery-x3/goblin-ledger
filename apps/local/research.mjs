@@ -1,18 +1,21 @@
-import {ACTIONS,compareWindows,normalizeArticle} from '../../packages/domain/research.mjs';
+import {randomUUID} from 'node:crypto';
+import {ACTIONS,compareWindows,comparisonDay,normalizeArticle,utcInstant} from '../../packages/domain/research.mjs';
 import {challengeCatalog,legacyRules,progressionForCharacter} from '../../packages/domain/progression.mjs';
 import {accountProgress,articles,initResearch,writeRevision} from './research/store.mjs';
 import {annotateLocally,fetchGuide} from './research/sources.mjs';
 
 const bad = message => Object.assign(new Error(message),{statusCode:400});
 const maxDay = 86400000;
-const dayPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
 
 function filters(query = {}) {
   const {asOf,routeId,history} = query;
-  if (asOf && (!dayPattern.test(asOf) || !Number.isFinite(Date.parse(asOf)))) throw bad('Supply a timestamp with a timezone for replay.');
+  let cutoff;
+  if (asOf) {
+    try {cutoff = utcInstant(asOf);} catch {throw bad('Supply a valid timestamp with a timezone for replay.');}
+  }
   const itemId = query.itemId === undefined ? null : Number(query.itemId);
   if (itemId !== null && (!Number.isSafeInteger(itemId) || itemId < 1)) throw bad('Invalid item ID.');
-  return {asOf:asOf ? new Date(asOf).toISOString() : undefined,routeId,itemId,includeHistory:history === 'true'};
+  return {asOf:cutoff,routeId,itemId,includeHistory:history === 'true'};
 }
 
 export function routeExposure(profile,routeId,asOf) {
@@ -53,8 +56,11 @@ export function registerResearch(app,ctx) {
   });
   app.post('/api/v1/research',async request => {
     let article;
-    try {article = normalizeArticle({...request.body,evidence:'player note'});} catch(e){throw bad(e.message);}
-    return writeRevision(profile().db,article);
+    const body = request.body ?? {};
+    const isNewObservation = body.action === 'changed use' && body.useKind === 'observed turn-in' && body.baseRevision === undefined;
+    const localId = body.localId ?? (isNewObservation ? randomUUID() : undefined);
+    try {article = normalizeArticle({...body,localId,evidence:'player note'});} catch(e){throw bad(e.message);}
+    return writeRevision(profile().db,article,undefined,request.body?.baseRevision);
   });
   app.post('/api/v1/research/refresh',async () => ctx.jobs.run('research.refresh',profile()));
   app.put('/api/v1/research/ai',async request => {
@@ -72,7 +78,7 @@ export function registerResearch(app,ctx) {
     const p = profile(), options = filters(request.query);
     const article = articles(p.db,options).find(a => a.id === request.params.id);
     if (!article) throw Object.assign(new Error('Research record unavailable at that time.'),{statusCode:404});
-    const id = options.itemId || article.itemIds[0], day = article.revisedOn || article.publishedOn;
+    const id = options.itemId || article.itemIds[0], day = comparisonDay(article);
     if (!day || !id) return {comparison:null,reason:'An item and dated source are required.'};
     const start = Date.parse(day+'T00:00:00Z'), cutoff = options.asOf ? Date.parse(options.asOf) : Date.now();
     const {getMarketSeries} = await import('./market.mjs');

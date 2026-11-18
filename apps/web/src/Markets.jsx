@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { ItemUseEvidence } from './ItemUseEvidence.jsx'
 import { History } from './MarketHistory.jsx'
 import { useMarketRead, refreshMarketReads } from './market-query.js'
 import './markets.css'
@@ -291,14 +292,19 @@ function Detail({ id, api, mode, region, refresh, goBack }) {
                 ))}
               </section>
             )}
-            {research.data?.items?.length > 0 && (
+            {research.error && <p role="alert">Could not load item research. {research.error}</p>}
+            {research.data?.items.some(r => r.useThesis) && <section>
+              <h4>Item-use thesis</h4>
+              {research.data.items.filter(r => r.useThesis).map(r => <ItemUseEvidence key={r.id} record={r}/>)}
+            </section>}
+            {research.data?.items?.some(r => !r.useThesis) && (
               <section>
                 <h4>Dated research</h4>
-                {research.data.items.map((r) => (
+                {research.data.items.filter(r => !r.useThesis).map((r) => (
                   <p key={r.id}>
-                    <a href={r.url} target="_blank" rel="noreferrer">
+                    {r.url ? <a href={r.url} target="_blank" rel="noreferrer">
                       {r.title}
-                    </a>{' '}
+                    </a> : r.title}{' '}
                     · {r.publishedOn || 'Publication date unknown'}
                   </p>
                 ))}
@@ -381,9 +387,7 @@ export function Markets({
           value={query}
           onChange={(e) => updatePane({ query: e.target.value, offset: 0 })}
         />
-        {mode === 'live' &&
-          region &&
-          /^\d{1,10}$/.test(query) &&
+        {/^\d{1,10}$/.test(query) &&
           Number(query) > 0 && (
             <button onClick={() => updatePane({ marketItem: Number(query) })}>
               Look up #{query}

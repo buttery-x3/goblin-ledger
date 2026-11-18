@@ -65,6 +65,20 @@ function lookup(profile, rawId) {
 }
 
 function quote(profile, id, body) {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    throw Object.assign(new Error('Provide a recipe quote as a JSON object'), {statusCode:400});
+  }
+  const owned = body.owned === undefined ? {} : body.owned;
+  if (owned === null || typeof owned !== 'object' || Array.isArray(owned)) {
+    throw Object.assign(new Error('Owned units must be an object keyed by item ID'), {statusCode:400});
+  }
+  for (const [key,units] of Object.entries(owned)) {
+    const itemId = checkedInt(Number(key),'Owned item ID',1,Number.MAX_SAFE_INTEGER);
+    if (String(itemId) !== key) {
+      throw Object.assign(new Error('Use a positive integer item ID for owned units'), {statusCode:400});
+    }
+    checkedInt(units,'Owned units',0,1000000);
+  }
   const recipe = lookup(profile,id);
   if ('revision' in body && body.revision !== recipe.catalog.revision) {
     throw Object.assign(new Error('The catalog changed. Reload the recipe before quoting.'), {statusCode:409});
@@ -80,7 +94,7 @@ function quote(profile, id, body) {
     asks[itemId] = getMarketItem(profile,itemId);
     books[itemId] = getMarketBook(profile,itemId);
   }
-  const result = quoteCraft(recipe,quantity,{asks,books,owned:body.owned ?? {},feeBps,
+  const result = quoteCraft(recipe,quantity,{asks,books,owned,feeBps,
     lostDepositCopper:deposit,t:snapshot?.t ?? null,house});
   if (!recipe.inputs.length) result.gaps.push('No ingredient quantities reported');
   if (recipe.outputId == null) result.gaps.push('No auctionable output item reported');
@@ -102,5 +116,5 @@ function quote(profile, id, body) {
 export function registerCraftCatalog(app,ctx) {
   app.get('/api/v1/crafts/imported', req => browse(ctx.profile(),req.query));
   app.get('/api/v1/crafts/imported/:id', req => lookup(ctx.profile(),req.params.id));
-  app.post('/api/v1/crafts/imported/:id/quote', req => quote(ctx.profile(),req.params.id,req.body ?? {}));
+  app.post('/api/v1/crafts/imported/:id/quote', req => quote(ctx.profile(),req.params.id,req.body ?? null));
 }
