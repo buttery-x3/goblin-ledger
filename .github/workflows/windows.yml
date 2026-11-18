@@ -15,6 +15,8 @@ jobs:
         with:
           node-version-file: .node-version
       - uses: pnpm/action-setup@v4
+      - name: Probe public market contracts (US diagnostic)
+        run: node scripts/probe-market.mjs us
       - name: Resolve initial lock for review
         if: ${{ hashFiles('pnpm-lock.yaml') == '' }}
         run: |

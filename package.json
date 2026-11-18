@@ -17,7 +17,6 @@
     "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
-    "better-sqlite3": "13.0.3",
     "fastify": "5.12.7",
     "react": "19.3.0",
     "react-dom": "19.3.0"
