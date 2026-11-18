@@ -41,7 +41,7 @@ try {
   await request("/settings", "PUT", { mode: "live", region });
   await session();
   await request("/markets/refresh", "POST", {});
-  const market = await request("/markets?limit=10");
+  const market = await request("/markets?sort=listed&direction=desc&limit=40");
   if (!market.snapshot?.t || !market.count)
     throw Error("No coherent market published");
   evidence.archive = {
@@ -56,7 +56,9 @@ try {
   };
   const known = await request("/markets?q=18945&limit=1");
   const ids = [
-    ...new Set([...known.items, ...market.items].map((i) => i.id)),
+    ...new Set([...known.items, ...market.items]
+      .filter((item) => item.commodity && item.ask > 0 && item.listed > 0)
+      .map((item) => item.id)),
   ].slice(0, 3);
   if (ids.length) {
     await request("/markets/" + ids[0] + "/detail", "POST", {});
@@ -85,6 +87,9 @@ try {
         id,
         state: comparable ? "comparable" : "different-time-or-unavailable",
         sameAsk: comparable ? secondary.ask === primary.item.ask : null,
+        sameListed: comparable && secondary.listed != null && primary.item.listed != null
+          ? secondary.listed === primary.item.listed
+          : null,
         observedAt: secondary.observedAt,
       });
     } catch (error) {
