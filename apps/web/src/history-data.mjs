@@ -16,8 +16,9 @@ function researchDays(articles, rows) {
       ['publishedOn', 'Published'],
       ['revisedOn', 'Revised'],
       ['effectiveOn', 'Effective'],
+      ['observedAt', 'Hand-in observed'],
     ]) {
-      const day = article[key]
+      const day = key === 'observedAt' ? article.observedAt?.slice(0, 10) : article[key]
       if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day)) continue
       const from = Date.parse(day + 'T00:00:00Z'),
         to = from + 24 * HOUR
