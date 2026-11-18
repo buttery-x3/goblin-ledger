@@ -19,6 +19,8 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build
+      - name: Probe EU service and independent house coverage
+        run: node scripts/probe-service.mjs eu
       - run: pnpm smoke
       - run: node scripts/workspace-dom.mjs
       - run: node scripts/package-release.mjs

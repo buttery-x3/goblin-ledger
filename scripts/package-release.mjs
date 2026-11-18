@@ -17,8 +17,8 @@ const injectionOnly = args.length === 1
 const archiveName = injectionOnly ? 'GoblinLedger-windows-injection-checked.zip' : 'GoblinLedger-windows.zip'
 const appName = 'GoblinLedger'
 
-async function run(exe, args, cwd, env = process.env) {
-  const child = spawn(exe, args, { cwd, env, stdio: 'inherit', windowsHide: true })
+async function run(exe, args, cwd, env = process.env, timeout = 0) {
+  const child = spawn(exe, args, { cwd, env, stdio: ['ignore','inherit','inherit'], windowsHide: true, timeout })
   const [code] = await once(child, 'exit')
   if (code !== 0) throw Error(basename(exe) + ' exited with code ' + code)
 }
@@ -48,8 +48,14 @@ async function stageProduct(stage) {
   await copyFiles(stage, 'apps/local', f => f.endsWith('.mjs') && !f.endsWith('.test.mjs'))
   await copyFiles(stage, 'packages/domain', f => /\.(?:mjs|ts)$/.test(f) && !f.endsWith('.test.mjs'))
   await copyFiles(stage, 'addon/GoblinLedger', f => /\.(?:lua|toc)$/i.test(f))
-  await copyFiles(stage, 'docs', f => f.endsWith('.md'))
-  await copyFiles(stage, 'dist', f => /\.(?:html|js|css|png|ico|svg|webp|woff2?|json)$/i.test(f))
+  const docs = join(stage,'docs'), dist = join(stage,'dist')
+  await mkdir(docs)
+  await mkdir(dist)
+  for (const name of ['Goblin-Ledger-Agent-Plan-v2.md','Goblin-Ledger-Design-v2.md','implementation-status.md','market-verification.md']) {
+    await cp(join(root,'docs',name),join(docs,name))
+  }
+  await cp(join(root,'dist/index.html'),join(dist,'index.html'))
+  await copyFiles(stage, 'dist/assets', f => /-[A-Za-z0-9_-]{8,}\.(?:js|css|png|ico|svg|webp|woff2?)$/i.test(basename(f)))
   const readme = await readFile(join(root, 'README.md'), 'utf8')
   const quickStart = '# Goblin Ledger for Windows\n\nExtract the entire ZIP into a folder. Install the Node.js runtime listed in .node-version, then double-click Start-GoblinLedger.cmd and open the local URL it prints. The web build and runtime packages are included.\n\n'
   await writeFile(join(stage, 'README.md'), quickStart + readme)
@@ -138,7 +144,7 @@ async function smoke(unpacked, profile) {
     }
     await verifyRoutes(get)
     // Exercise the shipped CMD, including its healthy-instance reuse check.
-    await run(env.ComSpec || 'cmd.exe', ['/d', '/c', 'Start-GoblinLedger.cmd'], unpacked, {...env,GOBLIN_LEDGER_PORT: address.port})
+    await run(env.ComSpec || 'cmd.exe', ['/d', '/c', 'Start-GoblinLedger.cmd'], unpacked, {...env,GOBLIN_LEDGER_PORT: address.port}, 10000)
     console.log('Packaged launch, HTTP assets, live cold start and launcher reuse passed.')
   } finally {
     if (service.connected) service.send('shutdown')

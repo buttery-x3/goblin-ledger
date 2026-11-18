@@ -223,26 +223,6 @@ button {
   background: #0f1918;
   padding: 8px;
 }
-.desk-split,
-.desk-grid,
-.side-stack {
-  display: grid;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-}
-.desk-grid.single {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-}
-.desk-grid.eight {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-template-rows: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-.desk > .workgroup {
-  height: 100%;
-}
 .workgroup {
   display: flex;
   flex-direction: column;
@@ -254,50 +234,7 @@ button {
   min-height: 0;
   container-type: inline-size;
 }
-.group-bar {
-  flex: none;
-  min-height: 34px;
-  display: flex;
-  align-items: stretch;
-  gap: 2px;
-  background: #20302a;
-  border-bottom: 1px solid var(--edge);
-  padding: 0 4px 0 0;
-}
-.tab-list {
-  display: flex;
-  align-items: stretch;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: thin;
-  flex: 1;
-}
-.tab-list button {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  font-size: 12px;
-  white-space: nowrap;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: transparent;
-  padding: 5px 12px;
-  color: var(--muted);
-}
-.tab-list button[aria-selected='true'] {
-  color: #e9e9db;
-  border-bottom-color: var(--gold);
-  background: #27392f;
-  font-weight: 600;
-}
-.tab-list button span {
-  color: var(--gold);
-  font-size: 17px;
-  line-height: 16px;
-}
-.pane-menu,
-.maximize {
+.pane-menu {
   font-size: 17px;
   width: 27px;
   padding: 0;
@@ -316,7 +253,6 @@ button {
   color: var(--text);
   background: var(--raise);
 }
-.maximize:hover,
 .pane-menu:hover {
   color: white;
 }
@@ -407,21 +343,6 @@ button {
 .profile-form p {
   font-size: 12px;
   color: var(--muted);
-}
-.splitter {
-  position: relative;
-  z-index: 1;
-  touch-action: none;
-}
-.splitter:hover,
-.splitter:focus-visible {
-  background: #607967;
-}
-.splitter.vertical {
-  cursor: col-resize;
-}
-.splitter.horizontal {
-  cursor: row-resize;
 }
 .statusbar {
   display: flex;
@@ -787,9 +708,6 @@ button {
   .route-index {
     grid-template-columns: 1fr;
   }
-  .tab-list button {
-    padding-inline: 5px;
-  }
 }
 @media (max-width: 760px) {
   .topbar {
@@ -831,11 +749,6 @@ button {
     font-size: 9px;
     padding: 3px 6px;
   }
-  .desk-grid.eight {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: repeat(4, minmax(250px, 1fr));
-    overflow: auto;
-  }
   .market-freshness {
     margin-left: auto;
   }
@@ -848,34 +761,6 @@ button {
     height: auto;
     min-height: 100dvh;
     overflow: visible;
-  }
-  .desk-split,
-  .side-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .splitter {
-    display: none;
-  }
-  .desk-split > .workgroup {
-    height: 68dvh;
-    min-height: 395px;
-  }
-  .side-stack > .workgroup,
-  .desk-split > .workgroup:nth-last-child(1) {
-    height: 280px;
-    min-height: 230px;
-  }
-  .desk > .workgroup,
-  .desk-grid.single .workgroup {
-    height: calc(100dvh - 140px);
-    min-height: 400px;
-  }
-  .desk-grid.eight {
-    grid-template-columns: 1fr;
-    grid-template-rows: none;
-    grid-auto-rows: 290px;
   }
   .mode-label {
     max-width: 45px;
@@ -901,5 +786,55 @@ button {
     transition:
       background-color 0.12s,
       border-color 0.12s;
+  }
+}
+
+.native-dock {
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  position: relative;
+}
+.native-dock .flexlayout__layout {
+  --color-text: var(--text);
+  --color-tab-content: var(--surface);
+  --color-background: var(--surface);
+  --color-base: #182921;
+  --color-1: #1c3029;
+  --color-2: #243c31;
+  --color-3: #455447;
+  --color-tab-selected-background: #2a3b2f;
+  --color-tab-selected: var(--text);
+  --color-tabset-background: #20302a;
+  --color-splitter: #12221b;
+  font-family: inherit;
+  font-size: 12px;
+}
+.native-dock .workgroup,
+.native-dock .pane-content {
+  width: 100%;
+  height: 100%;
+}
+.native-dock .workgroup {
+  border: 0;
+  border-radius: 0;
+}
+.native-dock .flexlayout__tabset {
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  background: var(--surface);
+}
+.native-dock .flexlayout__tab_button--selected {
+  box-shadow: inset 0 -2px var(--gold);
+}
+.dock-icon {
+  color: var(--gold);
+  font-size: 16px;
+  margin-right: 4px;
+}
+@media (max-width: 580px) {
+  .native-dock {
+    height: calc(100dvh - 140px);
+    min-height: 410px;
   }
 }

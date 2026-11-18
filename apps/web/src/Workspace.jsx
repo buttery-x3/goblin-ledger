@@ -1,17 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient, profileKey } from './client-api.js';
+import { WorkspaceDock } from './WorkspaceDock.jsx';
+import { encodeWorkspace, decodeWorkspace } from './dock-model.js';
 import {
   PANELS,
   PRESETS,
-  activate,
-  addTab,
-  closeTab,
   makeLayout,
   makeWorkspace,
-  moveTab,
   openTool,
   patchPane,
-  restoreWorkspace,
   saveNamed,
   selectFarm,
 } from './workspace-model.js';
@@ -113,54 +110,6 @@ function ProfileForm({ mode, region, onApply }) {
       </button>
       {status && <p role="status">{status}</p>}
     </form>
-  );
-}
-
-function Splitter({ orientation, value, label, onChange, min, max }) {
-  const start = useRef(null);
-  const vertical = orientation === 'vertical';
-  return (
-    <div
-      className={'splitter ' + orientation}
-      role="separator"
-      tabIndex="0"
-      aria-label={label}
-      aria-orientation={orientation}
-      aria-valuenow={Math.round(value)}
-      aria-valuemin={min}
-      aria-valuemax={max}
-      onPointerDown={(e) => {
-        const parent = e.currentTarget.parentElement.getBoundingClientRect();
-        start.current = {
-          origin: vertical ? e.clientX : e.clientY,
-          length: vertical ? parent.width : parent.height,
-          initial: value,
-        };
-        e.currentTarget.setPointerCapture(e.pointerId);
-      }}
-      onPointerMove={(e) => {
-        const drag = start.current;
-        if (drag?.length) {
-          const diff = (vertical ? e.clientX : e.clientY) - drag.origin;
-          onChange(Math.min(max, Math.max(min, drag.initial + (100 * diff) / drag.length)));
-        }
-      }}
-      onPointerUp={() => {
-        start.current = null;
-      }}
-      onPointerCancel={() => {
-        start.current = null;
-      }}
-      onKeyDown={(e) => {
-        const direction = (vertical ? { ArrowLeft: -1, ArrowRight: 1 } : { ArrowUp: -1, ArrowDown: 1 })[
-          e.key
-        ];
-        if (direction) {
-          e.preventDefault();
-          onChange(Math.min(max, Math.max(min, value + direction * 2)));
-        }
-      }}
-    />
   );
 }
 
@@ -281,8 +230,7 @@ export function Workspace() {
     session = useRef({ token: '', profile: '' }),
     dirty = useRef(false),
     serial = useRef(Promise.resolve()),
-    activeProfile = useRef(0),
-    dragTab = useRef(null);
+    activeProfile = useRef(0);
   const switching = useRef(false),
     timer = useRef(null);
   const stale = useRef(null);
@@ -311,7 +259,7 @@ export function Workspace() {
     try {
       const data = await api('/bootstrap');
       session.current = { profile: profileKey(data), token: data.token };
-      const restored = restoreWorkspace(data.workspace);
+      const restored = decodeWorkspace(data.workspace);
       current.current = restored;
       dirty.current = false;
       setWorkspace(restored);
@@ -394,7 +342,7 @@ export function Workspace() {
       if (!dirty.current || profile !== activeProfile.current) return;
       const snapshot = current.current;
       setSaving('Saving layout…');
-      return api('/workspace', { method: 'PUT', body: { workspace: snapshot } })
+      return api('/workspace', { method: 'PUT', body: { workspace: encodeWorkspace(snapshot) } })
         .then(() => {
           if (snapshot === current.current) {
             dirty.current = false;
@@ -468,17 +416,8 @@ export function Workspace() {
   const layout = workspace.current;
   const routes = Array.isArray(boot.routes) ? boot.routes : [];
   const open = (type) => changeLayout((l) => openTool(l, type));
-  const drop = (e, groupId, before = null) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const value = dragTab.current;
-    if (!value) return;
-    dragTab.current = null;
-    changeLayout((l) => moveTab(l, value.group, value.tab, groupId, before));
-  };
-  function renderGroup(group) {
-    const pane = group.tabs.find((t) => t.id === group.active);
-    const Component = panels[pane?.type];
+  function renderPane(group, pane) {
+    const Component = panels[pane.type];
     const props = pane
       ? {
           api,
@@ -494,128 +433,18 @@ export function Workspace() {
         }
       : null;
     return (
-      <section
-        key={group.id}
-        className={'workgroup ' + (pane?.type === 'Atlas' ? 'atlas-group' : '')}
-        data-group={group.id}
-        aria-label={(pane?.type || 'Empty') + ' viewport'}
-        onPointerDownCapture={() => {
-          if (pane) changeLayout((l) => activate(l, group.id, pane.id));
-        }}
-        onFocusCapture={() => {
-          if (pane) changeLayout((l) => activate(l, group.id, pane.id));
-        }}
-      >
-        <header
-          className="group-bar"
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => drop(e, group.id)}
-        >
-          <div className="tab-list" role="tablist" aria-label="Viewport tabs">
-            {group.tabs.map((t) => (
-              <button
-                key={t.id}
-                role="tab"
-                id={'label-' + t.id}
-                aria-selected={t.id === group.active}
-                aria-controls={'panel-' + t.id}
-                draggable
-                onDragStart={(e) => {
-                  dragTab.current = { group: group.id, tab: t.id };
-                  e.dataTransfer.effectAllowed = 'move';
-                  e.dataTransfer.setData('text/plain', t.id);
-                }}
-                onDragEnd={() => {
-                  dragTab.current = null;
-                }}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => drop(e, group.id, t.id)}
-                onClick={() => changeLayout((l) => activate(l, group.id, t.id))}
-              >
-                <span aria-hidden="true">{symbols[t.type]}</span>
-                {t.type === 'Console' ? 'Status / Console' : t.type}
-              </button>
-            ))}
+      <PanelBoundary key={boot.mode + group.id + pane.id}>
+        {pane.type === 'Settings' ? (
+          <div className="settings-body">
+            <ProfileForm mode={boot.mode} region={boot.region} onApply={applyProfile} />
+            <AddonSettings {...props} />
           </div>
-          <select
-            className="pane-menu"
-            aria-label={'Manage tabs in ' + group.id}
-            title="Add or manage tabs"
-            value=""
-            onChange={(e) => {
-              const command = e.target.value;
-              if (command === 'close' && pane) changeLayout((l) => closeTab(l, group.id, pane.id));
-              else if (command.startsWith('move:') && pane)
-                changeLayout((l) => moveTab(l, group.id, pane.id, command.slice(5)));
-              else if (command === 'earlier' && pane) {
-                const index = group.tabs.indexOf(pane);
-                if (index > 0)
-                  changeLayout((l) => moveTab(l, group.id, pane.id, group.id, group.tabs[index - 1].id));
-              } else changeLayout((l) => addTab(l, group.id, command));
-            }}
-          >
-            <option value="">＋</option>
-            <optgroup label="Add tab">
-              {PANELS.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </optgroup>
-            {pane && (
-              <optgroup label="Current tab">
-                <option value="close">Close {pane.type}</option>
-                {group.tabs.indexOf(pane) > 0 && <option value="earlier">Move tab left</option>}
-                {layout.groups
-                  .filter((g) => g.id !== group.id)
-                  .map((g, i) => (
-                    <option value={'move:' + g.id} key={g.id}>
-                      Move to {g.tabs.find((t) => t.id === g.active)?.type || 'empty pane'} (
-                      {layout.groups.indexOf(g) + 1})
-                    </option>
-                  ))}
-              </optgroup>
-            )}
-          </select>
-          <button
-            className="maximize"
-            aria-label={layout.maximized ? 'Restore panes' : 'Maximize pane'}
-            onClick={() =>
-              changeLayout((l) => ({ ...l, maximized: l.maximized === group.id ? null : group.id }))
-            }
-          >
-            {layout.maximized ? '⊟' : '⛶'}
-          </button>
-        </header>
-        <div
-          className="pane-content"
-          role="tabpanel"
-          id={pane ? 'panel-' + pane.id : undefined}
-          aria-labelledby={pane ? 'label-' + pane.id : undefined}
-        >
-          {pane ? (
-            <PanelBoundary key={boot.mode + group.id + pane.id}>
-              {pane.type === 'Settings' ? (
-                <div className="settings-body">
-                  <ProfileForm mode={boot.mode} region={boot.region} onApply={applyProfile} />
-                  <AddonSettings {...props} />
-                </div>
-              ) : (
-                <Component {...props} />
-              )}
-            </PanelBoundary>
-          ) : (
-            <div className="state-card">
-              <h3>Empty viewport</h3>
-              <p>Use the + menu to add a tool.</p>
-            </div>
-          )}
-        </div>
-      </section>
+        ) : (
+          <Component {...props} />
+        )}
+      </PanelBoundary>
     );
   }
-  const maxGroup = layout.groups.find((g) => g.id === layout.maximized);
-  const multi = layout.preset === 'terminal' || layout.preset === 'pair';
   return (
     <main className={'app density-' + layout.density}>
       <header className="topbar">
@@ -655,69 +484,12 @@ export function Workspace() {
         ))}
       </nav>
       <div className="desk" data-preset={layout.preset}>
-        {maxGroup ? (
-          renderGroup(maxGroup)
-        ) : multi ? (
-          <div
-            className="desk-split"
-            style={{
-              gridTemplateColumns:
-                'minmax(0,' + layout.primaryWidth + 'fr) 6px minmax(0,' + (100 - layout.primaryWidth) + 'fr)',
-            }}
-          >
-            {renderGroup(layout.groups[0])}
-            <Splitter
-              orientation="vertical"
-              label="Primary viewport width"
-              value={layout.primaryWidth}
-              min={22}
-              max={78}
-              onChange={(v) => changeLayout((l) => ({ ...l, primaryWidth: v }))}
-            />
-            {layout.preset === 'terminal' ? (
-              <div
-                className="side-stack"
-                style={{
-                  gridTemplateRows:
-                    'minmax(0,' +
-                    layout.sideHeights[0] +
-                    'fr) 6px minmax(0,' +
-                    layout.sideHeights[1] +
-                    'fr) 6px minmax(0,' +
-                    layout.sideHeights[2] +
-                    'fr)',
-                }}
-              >
-                {layout.groups.slice(1).map((g, i) => (
-                  <React.Fragment key={g.id}>
-                    {i > 0 && (
-                      <Splitter
-                        orientation="horizontal"
-                        label={'Side viewport ' + i + ' height'}
-                        value={layout.sideHeights[i - 1]}
-                        min={10}
-                        max={Math.min(80, layout.sideHeights[i - 1] + layout.sideHeights[i] - 10)}
-                        onChange={(v) =>
-                          changeLayout((l) => {
-                            const h = [...l.sideHeights];
-                            h[i] += h[i - 1] - v;
-                            h[i - 1] = v;
-                            return { ...l, sideHeights: h };
-                          })
-                        }
-                      />
-                    )}{' '}
-                    {renderGroup(g)}
-                  </React.Fragment>
-                ))}
-              </div>
-            ) : (
-              renderGroup(layout.groups[1])
-            )}
-          </div>
-        ) : (
-          <div className={'desk-grid ' + layout.preset}>{layout.groups.map(renderGroup)}</div>
-        )}
+        <WorkspaceDock
+          layout={layout}
+          changeLayout={changeLayout}
+          renderPane={renderPane}
+          symbols={symbols}
+        />
       </div>
       <footer className="statusbar">
         <span className={'connection ' + (stream === 'Connected' ? 'ok' : '')}>{stream}</span>

@@ -56,11 +56,11 @@ export function validLayout(layout) {
     !Number.isSafeInteger(layout.nextId) ||
     layout.nextId < 0 ||
     !Number.isFinite(layout.primaryWidth) ||
-    layout.primaryWidth < 22 ||
-    layout.primaryWidth > 78 ||
+    layout.primaryWidth < 0 ||
+    layout.primaryWidth > 100 ||
     !Array.isArray(layout.sideHeights) ||
     layout.sideHeights.length !== 3 ||
-    !layout.sideHeights.every((n) => Number.isFinite(n) && n >= 10 && n <= 80)
+    !layout.sideHeights.every((n) => Number.isFinite(n) && n >= 0 && n <= 100)
   )
     return false;
   const ids = new Set();

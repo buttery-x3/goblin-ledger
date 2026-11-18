@@ -82,12 +82,10 @@ export async function createServer({
       advertised !== expected &&
       !req.url.startsWith("/api/v1/bootstrap")
     ) {
-      return res
-        .code(409)
-        .send({
-          code: "PROFILE_CHANGED",
-          error: "Another tab changed the profile. Refresh this tab.",
-        });
+      return res.code(409).send({
+        code: "PROFILE_CHANGED",
+        error: "Another tab changed the profile. Refresh this tab.",
+      });
     }
     if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
       const cookies = (req.headers.cookie ?? "").split(/;\s*/);
@@ -203,7 +201,12 @@ export async function createServer({
       },
       { source: "sqlite", description: "Profile startup" },
     );
-    for (const p of ctx.profiles()) await jobs.run("storage.check", p);
+    for (const p of ctx.profiles()) {
+      const diagnostic = jobs
+        .list(p)
+        .find((job) => job.name === "storage.check");
+      if (!diagnostic?.paused) await jobs.run("storage.check", p);
+    }
     registerOperations(app, ctx);
     registerMarket(app, ctx);
     registerFarms(app, ctx);

@@ -58,6 +58,13 @@ test("the real app guards cross-tab writes and persists independent workspaces",
       ).statusCode,
       200,
     );
+    const pause = await app.inject({
+      method: "POST",
+      url: "/api/v1/jobs/storage.check/pause",
+      headers: demo.headers,
+      payload: {},
+    });
+    assert.equal(pause.statusCode, 200);
     await app.close();
     app = await createServer({ root, scheduling: false });
     const again = await bootstrap();
