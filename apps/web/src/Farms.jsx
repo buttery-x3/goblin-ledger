@@ -1,6 +1,7 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {useReactTable} from '@tanstack/react-table';
 import {farmSort, farmTableOptions} from './farm-table.js';
+import {FarmReceipts} from './FarmReceipts.jsx';
 import {eligibility} from '../../../packages/domain/farms.mjs';
 import './farms.css';
 
@@ -50,7 +51,11 @@ function RunEditor({route,save,actors,selectedActor}) {
       <label>Exit<select value={s.exit} onChange={e => stackField(i,{exit:e.target.value})}>
         {!s.bound && <option value="auction">Auction</option>}<option value="vendor">Vendor</option><option value="keep">Keep</option>
       </select></label>
-      <label><input type="checkbox" checked={s.bound} onChange={e => stackField(i,{bound:e.target.checked,...(e.target.checked && s.exit === 'auction' ? {exit:'keep'} : {})})}/> Bound</label>
+      <label>Binding<select value={s.binding ?? 'unknown'} onChange={e => {
+        const binding=e.target.value;
+        stackField(i,{binding,bound:binding==='bound',...(binding==='bound' && s.exit==='auction'?{exit:'keep'}:{})});
+      }}><option value="unknown">Unknown</option><option value="tradeable">Tradeable</option><option value="bound">Bound</option></select></label>
+      <label>Suffix ID<input maxLength={12} value={s.variant ?? ''} placeholder="0 for base item" pattern="-?[0-9]{1,10}" onChange={e=>stackField(i,{variant:e.target.value || undefined})}/></label>
       <label><input type="checkbox" checked={s.rare} onChange={e => stackField(i,{rare:e.target.checked})}/> Rare</label>
       <button type="button" onClick={() => field('haul',run.haul.filter((_,n) => n !== i))}>Remove</button>
     </fieldset>)}
@@ -75,12 +80,15 @@ function RouteEditor({route,save}) {
   </form>;
 }
 
-function RunHistory({api,route}) {
+function RunHistory({api,route,refresh}) {
+  const [reconciling,setReconciling]=useState(null);
   const [rows,setRows] = useState([]), [offset,setOffset] = useState(0), [error,setError] = useState('');
   useEffect(() => {let active = true; setError('');api('/farms/'+route.id+'/history?offset='+offset).then(r => {if(active) setRows(r.rows);}).catch(e => {if(active) setError(e.message);});
     return () => {active=false;};},[api,route.id,offset]);
   return <div>{error && <p role="alert">{error}</p>}{rows.length ? <ul>{rows.map(r => <li key={r.id}>
     {new Date(r.observed).toLocaleString()} · r{r.revision} · {r.character || 'Unassigned'} · {r.elapsedMinutes} min · {money(r.coinCopper)} looted · {r.haul.map(s => s.units+' × #'+s.itemId).join(', ') || 'Empty haul'}
+    {' '}<button aria-expanded={reconciling===r.id} onClick={()=>setReconciling(reconciling===r.id?null:r.id)}>Sale receipts</button>
+    {reconciling===r.id && <FarmReceipts api={api} runId={r.id} refresh={refresh}/>}
   </li>)}</ul> : <p>No recorded runs on this page.</p>}
   <div className="farm-controls"><button disabled={offset===0} onClick={() => setOffset(offset-50)}>Previous</button><button disabled={rows.length<50} onClick={() => setOffset(offset+50)}>Next</button></div></div>;
 }
@@ -159,6 +167,10 @@ export function Farms({api,mode,region,pane,updatePane,selectedRoute,onSelectRou
       <p>{route.loops ?? '—'} complete loops · {route.approachMinutes} min approach · {route.runCount} samples · {route.sampleScope} · {route.priceBasis}
         {route.quote?.t ? ' · '+new Date(route.quote.t).toLocaleString() : ''}</p>
       <p>Across samples · Coin {money(route.coinCopper)} · Vendor scenario {money(route.vendorCopper)} · Auction scenario {money(route.auctionCopper)} · Expenses {money(route.expenseCopper)} · Rare share {money(route.rareCopper)}</p>
+      {route.realised && <p>After attributed sales · {route.realised.saleUnits} units settled for {money(route.realised.settledCopper)} net.
+        Cash after expenses {money(route.realised.cashAfterExpensesCopper)} · Priced unsold auction units {money(route.realised.unsoldAuctionCopper)}
+        {' · '}Unsold vendor estimate {money(route.realised.unsoldVendorCopper)} · Combined {money(route.realised.combinedCopper)}
+        {route.realised.gaps.length>0 && ' · Remaining prices incomplete'}</p>}
       <p>Sale cut scenario {route.feeBps/100}% · Match target at {route.requiredUnitsPerHour ?? '—'} herbs/hour before expenses.</p>
       {route.baselineTime!=null && <p>Same haul and elapsed time · {money(route.changeCopperPerHour)}/h change since {new Date(route.baselineTime).toLocaleString()}.</p>}
       {!!route.gaps?.length && <p>Missing · {route.gaps.join(', ')}</p>}
@@ -167,7 +179,7 @@ export function Farms({api,mode,region,pane,updatePane,selectedRoute,onSelectRou
         <button key={k} aria-expanded={tool===k} onClick={() => setTool(tool===k?'':k)}>{label}</button>)}</div>
       {tool==='run' && <RunEditor route={route} actors={actors} selectedActor={actor} save={async data => {await api('/farms/'+route.id+'/runs',{method:'POST',body:data});await refreshed('Run recorded.');}}/>}
       {tool==='edit' && <RouteEditor route={route} save={async data => {await api('/farms/'+route.id,{method:'PUT',body:data});await refreshed('Revision saved.');}}/>}
-      {tool==='history' && <RunHistory api={api} route={route}/>}
+      {tool==='history' && <RunHistory api={api} route={route} refresh={async()=>{setCompared((await api('/farms/compare',{method:'POST',body:{...options,sessionMinutes:session}})).routes);await refreshRoutes?.();}}/>}
       {tool==='scenario' && <Scenario route={route} options={options} apply={editOptions}/>}
     </article>}
   </section>;

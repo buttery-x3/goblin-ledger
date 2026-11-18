@@ -57,8 +57,11 @@ async function stageProduct(stage) {
   await cp(join(root,'dist/index.html'),join(dist,'index.html'))
   await copyFiles(stage, 'dist/assets', f => /-[A-Za-z0-9_-]{8,}\.(?:js|css|png|ico|svg|webp|woff2?)$/i.test(basename(f)))
   const readme = await readFile(join(root, 'README.md'), 'utf8')
+  const start=readme.indexOf('## First session'), end=readme.indexOf('## Development');
+  if(start<0 || end<=start) throw Error('Player guide sections are missing from README.md');
+  const playerGuide=readme.slice(start,end).trimEnd();
   const quickStart = '# Goblin Ledger for Windows\n\nExtract the entire ZIP into a folder. Install the Node.js runtime listed in .node-version, then double-click Start-GoblinLedger.cmd and open the local URL it prints. The web build and runtime packages are included.\n\n'
-  await writeFile(join(stage, 'README.md'), quickStart + readme)
+  await writeFile(join(stage, 'README.md'), quickStart + playerGuide + '\n\n[Implementation and source verification](docs/implementation-status.md)\n')
   await run(process.env.ComSpec || 'cmd.exe', [
     '/d', '/c', 'pnpm.cmd install --prod --frozen-lockfile --config.node-linker=hoisted --config.package-import-method=copy',
   ], stage)

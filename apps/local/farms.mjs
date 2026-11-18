@@ -4,6 +4,8 @@ import {recipes, quoteCraft, unlockPayback} from '../../packages/domain/crafts.m
 import {choices, boxComparison} from '../../packages/domain/transformations.mjs';
 import {getMarketBook, getMarketItem, getMarketSeries} from './market.mjs';
 import {routeExposure} from './research.mjs';
+import {pool} from './personal/ledger.mjs';
+import {allocate, allocationOptions, legacyAccount, prepareAllocations, realisedView, recordScope, undoAllocation} from './farm-receipts.mjs';
 import {apprenticeCrate, herbBundles, fragment, compareBox, compareCrate} from '../../packages/domain/farm-choices.mjs';
 
 function fail(message, code = 400) { throw Object.assign(new Error(message), {statusCode:code}); }
@@ -19,17 +21,19 @@ function initialise(db) {
     );
     CREATE INDEX IF NOT EXISTS farm_runs_route ON farm_runs(route,revision,observed DESC)
   `);
+  prepareAllocations(db);
 }
 
 function mergedRoute(db, base) {
   const latest = db.prepare('SELECT revision,settings FROM farm_revisions WHERE route=? ORDER BY revision DESC LIMIT 1').get(base.id);
   return {...base,approachMinutes:0,...(latest ? JSON.parse(latest.settings) : {}),revision:latest?.revision ?? base.revision};
 }
-function savedRuns(db, route, characterId = null) {
+function savedRuns(profile, route, characterId = null) {
+  const {db}=profile;
   const actorClause = characterId ? " AND json_extract(details,'$.characterId')=?" : '';
-  const args = [route.id,route.revision];
+  const args = [route.id,route.revision,legacyAccount(profile),pool(profile)];
   if (characterId) args.push(characterId);
-  return db.prepare('SELECT id,observed,details FROM farm_runs WHERE route=? AND revision=?'+actorClause+' ORDER BY observed DESC, id DESC LIMIT 500')
+  return db.prepare('SELECT id,observed,details FROM farm_runs WHERE route=? AND revision=? AND COALESCE(account,?)=?'+actorClause+' ORDER BY observed DESC, id DESC LIMIT 500')
     .all(...args).map(r => ({id:r.id,observed:r.observed,...JSON.parse(r.details)}));
 }
 
@@ -54,11 +58,11 @@ function routeReport(profile, base, options, lookup, history) {
   const route = mergedRoute(profile.db,base);
   const actorId = options.characterId || null;
   if (actorId && (typeof actorId!=='string' || actorId.length>160)) fail('Invalid character ID');
-  let saved = savedRuns(profile.db,route,actorId);
+  let saved = savedRuns(profile,route,actorId);
   let scope = actorId ? 'Selected character' : 'All characters';
   const allowFallback = !actorId || options.allowAggregate !== false;
   if (actorId && !saved.length && allowFallback) {
-    saved = savedRuns(profile.db,route);
+    saved = savedRuns(profile,route);
     scope = 'All characters · fallback';
   }
   const draft = options.scenarios?.[route.id];
@@ -101,6 +105,7 @@ function routeReport(profile, base, options, lookup, history) {
     actorId,sampleScope:scope,sampleLimit:500,
     yieldBasis:draft ? 'Scenario' : saved.length ? 'Personal runs' : samples.length ? 'Demo scenario' : 'Yield unknown',
     priceBasis:primaryOverride != null ? 'Scenario' : profile.mode === 'demo' ? 'Demo house' : prices[route.outputId]?.ask != null ? 'House ask' : 'Price unknown',
+    realised:!draft && saved.length ? realisedView(profile,saved,{...fixed,prices}) : null,
     runHistory:saved.slice(0,25)};
 }
 
@@ -156,24 +161,29 @@ export function registerFarms(app,ctx) {
     const id = String(body.id ?? randomUUID());
     if (!/^[a-zA-Z0-9-]{8,80}$/.test(id)) fail('Invalid run identifier');
     const details = JSON.stringify(run);
-    const previous = profile.db.prepare('SELECT route,revision,details FROM farm_runs WHERE id=?').get(id);
+    const previous = profile.db.prepare('SELECT route,revision,details,account FROM farm_runs WHERE id=?').get(id);
     if (previous) {
       const existing = JSON.stringify(validRun(JSON.parse(previous.details)));
-      if (previous.route !== route.id || previous.revision !== route.revision || existing !== details) fail('Run ID already used',409);
+      if ((previous.account??legacyAccount(profile))!==pool(profile) || previous.route !== route.id || previous.revision !== route.revision || existing !== details) fail('Run ID already used',409);
       return {id,repeated:true};
     }
-    profile.db.prepare('INSERT INTO farm_runs(id,route,revision,observed,details) VALUES(?,?,?,?,?)')
-      .run(id,route.id,route.revision,new Date().toISOString(),details);
+    const {account,observedActor}=recordScope(profile,run);
+    profile.db.prepare('INSERT INTO farm_runs(id,route,revision,observed,details,account) VALUES(?,?,?,?,?,?)')
+      .run(id,route.id,route.revision,new Date().toISOString(),JSON.stringify({...run,observedActor}),account);
     reply.code(201);
     return {id,repeated:false};
   });
   app.get('/api/v1/farms/:id/history', req => {
     const profile = ctx.profile(), route = requireRoute(profile,req.params.id);
     const offset = checkedInt(Number(req.query?.offset ?? 0),'History offset',0,100000000);
-    const rows = profile.db.prepare('SELECT id,revision,observed,details FROM farm_runs WHERE route=? ORDER BY observed DESC,id DESC LIMIT 50 OFFSET ?')
-      .all(route.id,offset).map(r => ({id:r.id,revision:r.revision,observed:r.observed,...JSON.parse(r.details)}));
+    const rows = profile.db.prepare('SELECT id,revision,observed,details FROM farm_runs WHERE route=? AND COALESCE(account,?)=? ORDER BY observed DESC,id DESC LIMIT 50 OFFSET ?')
+      .all(route.id,legacyAccount(profile),pool(profile),offset).map(r => ({id:r.id,revision:r.revision,observed:r.observed,...JSON.parse(r.details)}));
     return {rows,offset};
   });
+  const accountProfile=()=>{const profile=ctx.profile();initialise(profile.db);return profile;};
+  app.get('/api/v1/farm-runs/:runId/receipts', req=>allocationOptions(accountProfile(),req.params.runId));
+  app.post('/api/v1/farm-runs/:runId/receipts', req=>allocate(accountProfile(),req.params.runId,req.body));
+  app.delete('/api/v1/farm-runs/:runId/receipts/:allocationId', req=>undoAllocation(accountProfile(),req.params.runId,req.params.allocationId));
   app.get('/api/v1/crafts/catalog', () => ({recipes,transformations:choices}));
   app.get('/api/v1/crafts/choices', () => ({choices:compareChoices(ctx.profile())}));
   app.post('/api/v1/crafts/choices', req => {

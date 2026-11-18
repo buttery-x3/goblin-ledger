@@ -127,11 +127,13 @@ export function validRun(input) {
     coinCopper: checkedInt(input.coinCopper ?? 0, 'Looted coin', 0, 1000000000),
     expenseCopper: checkedInt(input.expenseCopper ?? 0, 'Expenses', 0, 1000000000),
     haul: input.haul.map(stack => {
-      if (!stack || !['auction','vendor','keep'].includes(stack.exit) || (stack.bound && stack.exit === 'auction')) {
+      const binding=stack?.binding ?? (stack?.bound?'bound':'unknown'), variant=String(stack?.variant ?? 'unknown');
+      if (!stack || !['tradeable','bound','unknown'].includes(binding) || (stack.bound && binding!=='bound') ||
+          !/^(?:unknown|-?\d{1,10})$/.test(variant) || !['auction','vendor','keep'].includes(stack.exit) || (binding==='bound' && stack.exit === 'auction')) {
         throw Object.assign(new Error('Choose a valid exit for each stack. Bound loot can be kept or vendored.'), {statusCode:400});
       }
       return {itemId: checkedInt(stack.itemId, 'Item ID', 1, 9999999), units: checkedInt(stack.units, 'Units', 1, 100000),
-        exit: stack.exit, bound: stack.bound === true, rare: stack.rare === true};
+        exit: stack.exit, bound: binding==='bound',binding,variant,rare:stack.rare===true};
     }),
   };
 }
