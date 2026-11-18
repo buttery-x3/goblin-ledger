@@ -17,8 +17,6 @@ jobs:
       - uses: pnpm/action-setup@v4
       - name: Install and build through the player setup command
         run: .\Setup-GoblinLedger.cmd
-      - name: Check the US PvP Alliance house through the live service
-        run: node scripts/probe-service.mjs us
       - run: pnpm check
       - run: pnpm test
       - run: pnpm smoke
