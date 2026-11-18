@@ -244,7 +244,12 @@ export function normalizeRecipes(raw) {
     id: integer(Number(id), 'vendor item', 1),
     price: integer(price, 'vendor purchase price'),
   }))
-  return { entries, vendor }
+  const items = Object.entries(raw.items).flatMap(([key, item]) =>
+    typeof item?.name === 'string' && item.name.trim()
+      ? [{ id: integer(Number(key), 'catalog item', 1), name: item.name.trim() }]
+      : [],
+  )
+  return { entries, vendor, items }
 }
 
 export function tierUnits(row, book) {

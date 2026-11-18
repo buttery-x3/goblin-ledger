@@ -3,6 +3,7 @@ import {routesCatalog, checkedInt, validRun, farmReturns} from '../../packages/d
 import {recipes, quoteCraft, unlockPayback} from '../../packages/domain/crafts.mjs';
 import {choices, boxComparison} from '../../packages/domain/transformations.mjs';
 import {getMarketBook, getMarketItem, getMarketSeries} from './market.mjs';
+import {registerCraftCatalog} from './craft-catalog.mjs';
 import {routeExposure} from './research.mjs';
 import {pool} from './personal/ledger.mjs';
 import {allocate, allocationOptions, legacyAccount, prepareAllocations, realisedView, recordScope, undoAllocation} from './farm-receipts.mjs';
@@ -143,6 +144,7 @@ function compareChoices(profile) {
 }
 
 export function registerFarms(app,ctx) {
+  registerCraftCatalog(app,ctx);
   app.get('/api/v1/farms', () => ({routes:getRoutes(ctx.profile())}));
   app.post('/api/v1/farms/compare', req => ({routes:getRoutes(ctx.profile(),req.body ?? {})}));
   app.put('/api/v1/farms/:id', req => {
