@@ -205,7 +205,7 @@ function envelope(profile, asOf) {
     mapping:
       profile.mode === 'demo'
         ? 'Synthetic PvP Alliance house'
-        : 'Provider-inferred PvP group; independent calibration pending',
+        : 'Provider-inferred PvP Alliance house. Item details offer a separate AHledger comparison with its own scan time.',
     status: !profileRegion(profile)
       ? 'choose-region'
       : !snapshot
