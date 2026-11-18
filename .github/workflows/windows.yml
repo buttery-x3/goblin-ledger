@@ -15,12 +15,10 @@ jobs:
         with:
           node-version-file: .node-version
       - uses: pnpm/action-setup@v4
-      - run: pnpm install --frozen-lockfile
+      - name: Install and build through the player setup command
+        run: .\Setup-GoblinLedger.cmd
       - run: pnpm check
       - run: pnpm test
-      - run: pnpm build
-      - name: Probe EU service and independent house coverage
-        run: node scripts/probe-service.mjs eu
       - run: pnpm smoke
       - run: node scripts/workspace-dom.mjs
       - run: node scripts/package-release.mjs

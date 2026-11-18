@@ -37,3 +37,5 @@ The script creates a temporary SQLite database, synthesises 6,600 items for each
 | One-item history query | 13.61 ms |
 
 Measured on Windows, AMD Ryzen 5 5600X, 31.95 GiB RAM and Node 24.15.0. The query measurements came from the first implementation of the market handlers during the build, with an already warm database. They cover local server work only. Provider latency, browser rendering, populated recipe search and storage on other machines can produce different timings. The benchmark stays outside routine CI.
+
+A separate Windows service check on 18 November at 16:05:56 UTC published the EU house, validated search and scanner results, and compared three targeted asks in memory with a separately labelled AHledger scan. The primary recipe check also passed after the quantity fix. Results and observation limits are recorded in [implementation status](implementation-status.md). Run the end-to-end source check on demand with `node scripts/probe-service.mjs eu`. Each execution fetches a full public overview. Respect the one-per-market-per-hour limit across diagnostic profiles.
