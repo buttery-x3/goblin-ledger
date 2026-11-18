@@ -1,0 +1,95 @@
+.ops-console {
+  padding: 0.8rem;
+  overflow: auto;
+  max-height: 100%;
+  box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
+}
+.ops-console .ops-head,
+.ops-console .ops-actions,
+.ops-console .ops-filters,
+.ops-console .ops-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.ops-console .ops-head {
+  justify-content: space-between;
+  padding-bottom: 0.7rem;
+}
+.ops-console .ops-head [aria-pressed='true'] {
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.3em;
+}
+.ops-console .ops-job-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  gap: 0.55rem;
+}
+.ops-console article,
+.ops-console .ops-error {
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 5px;
+  padding: 0.7rem;
+}
+.ops-console p {
+  margin: 0.35rem 0;
+  font-size: 0.84em;
+}
+.ops-console small {
+  font-size: 0.78em;
+  opacity: 0.75;
+}
+.ops-console .ops-title {
+  justify-content: space-between;
+}
+.ops-console [data-state],
+.ops-console .ops-title > span {
+  font-size: 0.78em;
+  text-transform: capitalize;
+}
+.ops-console [data-state='failed'],
+.ops-console [data-level='error'] span,
+.ops-console .ops-error {
+  color: #e99c87;
+}
+.ops-console [data-state='succeeded'] {
+  color: #8fc1a6;
+}
+.ops-console .ops-actions {
+  margin-top: 0.55rem;
+}
+.ops-console .ops-filters {
+  padding: 0.5rem 0;
+}
+.ops-console table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.ops-console td,
+.ops-console th {
+  padding: 0.3rem;
+  vertical-align: top;
+}
+.ops-console td small,
+.ops-console .ops-log-list span {
+  display: block;
+}
+.ops-console .ops-log-list {
+  padding: 0;
+  list-style: none;
+}
+.ops-console .ops-log-list li {
+  padding: 0.35rem 0;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+.ops-console span {
+  overflow-wrap: anywhere;
+}
+.ops-console .ops-log-list span {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+}

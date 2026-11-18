@@ -1,0 +1,18 @@
+.farm-pane { min-width: 0; font-size: 0.8rem; }
+.farm-pane h3 { margin: .45rem 0 .25rem; font-size: 1.03rem; }
+.farm-pane p { margin: .35rem 0; }
+.farm-controls,.farm-inputs { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; margin:.35rem 0; }
+.farm-controls input[type=search] { flex:1; min-width:8rem; }
+.farm-inputs label,.farm-form>label { display:grid; gap:.2rem; }
+.farm-inputs label:has(input[type=checkbox]) { display:inline-flex; align-items:center; }
+.farm-inputs input[type=number] { width:7rem; }
+.farm-pane table { width:100%; border-collapse:collapse; font-variant-numeric: tabular-nums; }
+.farm-pane th,.farm-pane td { padding:.35rem .4rem; text-align:right; border-bottom:1px solid #52645354; }
+.farm-pane th:first-child,.farm-pane td:first-child { text-align:left; }
+.farm-pane td small { display:block; opacity:.7; font-size:.69rem; }
+.farm-pane .farm-row { border:0; background:transparent; color:inherit; padding:0; text-align:left; font-weight:600; }
+.farm-pane .selected { background:#5a855030; }
+.farm-detail,.farm-form { padding:.5rem 0; }
+.farm-pane a { color:inherit; text-decoration:underline; }
+.farm-pane textarea { min-height:4rem; }
+.farm-pane fieldset { margin:.4rem 0; border:1px solid #526453; }
