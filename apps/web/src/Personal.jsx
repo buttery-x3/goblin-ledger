@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react'
 import { progressionForCharacter } from '../../../packages/domain/progression.mjs'
-import { PositionTransfers } from './PositionTransfers.jsx'
 import './personal.css'
 
 const fmt=Intl.NumberFormat()
@@ -97,10 +96,9 @@ function PositionNote({api,pos,onDone}) {
 }
 export function Positions({api,mode,region,refreshKey}) {
   const {data,error,reload}=usePersonal(api,'positions',mode,region+'|'+refreshKey)
-  const {data:chars,reload:reloadChars}=usePersonal(api,'characters',mode,refreshKey)
+  const {data:chars}=usePersonal(api,'characters',mode,refreshKey)
   const characters=chars?.scope===data?.scope ? chars?.characters??[] : []
   const names=Object.fromEntries(characters.map(c=>[c.id,c.name]))
-  const reloadAccount=()=>{reload();reloadChars()}
   return <div className="personal-pane"><details><summary>Record a transaction</summary><NewEntry api={api} characters={characters} onDone={reload}/></details>
     <Notice msg={error}/>{!data?<p>Loading positions…</p>:!data.positions.length?<p>No holdings observed. Import a character or enter an opening balance above.</p>:data.positions.map(p=>
       <details key={p.asset}><summary><strong>{p.valuation?.name||('Item '+p.itemId)}</strong> <span>{fmt.format(p.economic)} units · {p.binding}</span></summary>
@@ -115,7 +113,7 @@ export function Positions({api,mode,region,refreshKey}) {
           {p.timingUncertain&&<><dt>Reconciliation</dt><dd>Overlapping observations or same-second events leave the order uncertain.</dd></>}</dl>
         {p.locations.map((l,i)=><p key={i}>{names[l.id]??l.id} · {l.scope} · {fmt.format(l.quantity)} · {date(l.at)}</p>)}
         {p.receipts.map(r=><p key={r.id}>Sale · {date(r.at)} · {r.quantity} units · {gold(r.proceedsCopper)} proceeds</p>)}
-        <PositionTransfers key={data.scope} scope={data.scope} api={api} position={p} characters={characters} onRefresh={reloadAccount}/>
+        {p.transactions?.filter(tx=>tx.action==='transfer').map(tx=><p key={tx.id}>Archived transfer · {date(tx.at)} · {fmt.format(tx.quantity)} units from {names[tx.owner]??tx.owner} to {names[tx.recipient]??tx.recipient}{tx.unallocatedQuantity>0 && ' · '+fmt.format(tx.unallocatedQuantity)+' units unresolved'}</p>)}
         <PositionNote api={api} pos={p} onDone={reload}/></details>)}
   </div>
 }

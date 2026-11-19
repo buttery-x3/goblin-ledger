@@ -85,8 +85,7 @@ export function saveNote(profile,input) {
 export function transaction(profile,input) {
   const p=pool(profile),{db}=profile
   const action=input.action
-  if (action==='transfer') return recordTransfer(profile,input,p)
-  if (!['opening','purchase','sale'].includes(action)) throw Error('Select a purchase, opening balance, sale or transfer.')
+  if (!['opening','purchase','sale'].includes(action)) throw Error('Select a purchase, opening balance or sale.')
   const tx={...identity(input),action,id:label(input.id??randomUUID(),120),owner:label(input.owner??'manual'),at:integer(input.at,1,Math.floor(Date.now()/1000)+60),
     quantity:integer(input.quantity,1,1_000_000_000),unitCopper:input.unitCopper == null && action!=='sale' ? null : wholeCopper(input.unitCopper),
     feeBps:integer(input.feeBps??500,0,10000),depositPaidCopper:wholeCopper(input.depositPaidCopper??'0'),depositRefundCopper:wholeCopper(input.depositRefundCopper??'0')}
@@ -99,37 +98,6 @@ export function transaction(profile,input) {
   }
   db.prepare('INSERT INTO personal_tx VALUES(?,?,?,?)').run(p,tx.id,tx.at,JSON.stringify(tx))
   return {id:tx.id,status:'recorded'}
-}
-function recordTransfer(profile,input,p) {
-  const key=identity(input)
-  if (input.binding!=='tradeable' || !input.variant || key.variant==='unknown' || String(Number(key.variant))!==key.variant)
-    throw Error('A transfer requires a verified tradeable item and its exact suffix.')
-  const tx={...key,action:'transfer',id:label(input.id,120),owner:label(input.owner),recipient:label(input.recipient),
-    at:integer(input.at,1,Math.floor(Date.now()/1000)),quantity:integer(input.quantity,1,1_000_000_000)}
-  if (tx.owner===tx.recipient || input.confirmed!==true) throw Error('Confirm a completed transfer between two different characters.')
-  if ([input.unitCopper,input.feeBps,input.depositPaidCopper,input.depositRefundCopper].some(v=>v!=null)) throw Error('Transfers carry existing basis and have no price, fee or deposit.')
-  const {db}=profile
-  return atomic(db,()=>{
-    if (input.scope!==pool(profile) || input.scope!==p) throw Error('The selected account changed. Reload Positions and confirm the transfer again.')
-    const serialized=JSON.stringify(tx)
-    const prior=db.prepare('SELECT record FROM personal_tx WHERE pool=? AND id=?').get(p,tx.id)
-    if (prior) {
-      if (prior.record!==serialized) throw Error('That transaction identity already has different details.')
-      return {id:tx.id,status:'unchanged'}
-    }
-    if (db.prepare('SELECT COUNT(*) AS n FROM personal_char WHERE pool=? AND id IN (?,?)').get(p,tx.owner,tx.recipient).n!==2)
-      throw Error('Select two imported characters in the current account.')
-    const transfers=()=>listPositions(profile).find(a=>a.asset===tx.asset)?.transactions.filter(t=>t.action==='transfer')??[]
-    const hasLater=db.prepare("SELECT 1 FROM personal_tx WHERE pool=? AND at>=? AND json_extract(record,'$.asset')=? AND json_extract(record,'$.action')='transfer' LIMIT 1").get(p,tx.at,tx.asset)
-    const previous=new Map(hasLater ? transfers().map(t=>[t.id,t.unallocatedQuantity]) : [])
-    db.prepare('INSERT INTO personal_tx VALUES(?,?,?,?)').run(p,tx.id,tx.at,serialized)
-    const current=transfers()
-    if (current.find(t=>t.id===tx.id)?.unallocatedQuantity!==0)
-      throw Error('Insufficient dated sender stock for this variant. Check earlier observations or enter a supported acquisition.')
-    if (current.some(t=>previous.has(t.id) && t.unallocatedQuantity>previous.get(t.id)))
-      throw Error('This handoff would use stock needed by a previously confirmed transfer.')
-    return {id:tx.id,status:'recorded'}
-  })
 }
 function settle(tx,asset,balances) {
   if (tx.action==='transfer') {
