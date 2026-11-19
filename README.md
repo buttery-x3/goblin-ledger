@@ -23,8 +23,6 @@ A Windows build artifact contains the built interface and its service dependenci
 4. For character data, choose **Settings → Browse folders** or paste your WoW parent or `_forever_` folder. Inspect the resolved destination, select the account and click **Install**. Enable the addon during normal play. After a normal logout or UI reload, the service imports the saved export. The next ordinary bank visit supplies an observed bank snapshot. **Positions** supports manual opening balances, purchases, sales and hold notes.
 5. Open **Layouts** to switch among one, two, four or eight panes or save an arrangement. The initial view gives the Atlas the full left side, with Farms, Opportunities and Characters on the right.
 
-To record items you moved between two imported characters, open the tradeable item in **Positions** and choose **Record a transfer**. Select the sender and recipient, enter the units received and confirm after the handoff is complete. For an earlier transfer, enter the local time the recipient received the items. The ledger carries the original cost basis across the transfer.
-
 In **Research**, choose **Add source**, set **Action** to **changed use**, and enter the affected item IDs. For a build change, link the source and enter its effective date. For an observed turn-in, record who saw it, where and when (UTC). Find the item by ID in **Markets** to see its thesis, even when it has no listing. Use **Record a revision** in Research to correct the evidence or replay an earlier date to see what was known then.
 
 ## Status and recovery
