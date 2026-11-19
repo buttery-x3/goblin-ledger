@@ -33,18 +33,32 @@ export function ensureStore({ db, mode, region }) {
     `)
     initialized.add(db)
   }
-  if (
-    mode === 'demo' &&
-    !db.prepare('SELECT 1 FROM market_house WHERE region=?').get(region || 'us')
-  ) {
-    const demo = demoData(region || 'us')
-    transaction(db, () => {
-      saveHouse(db, demo.house)
-      for (const snap of demo.snapshots) insertSnapshot(db, snap)
-      for (const detail of demo.details)
-        insertDetail(db, detail, demo.snapshots.at(-1).t)
-    })
-  }
+  if (mode === 'demo') ensureDemoFixtures(db, region || 'us')
+}
+
+function ensureDemoFixtures(db, region) {
+  const revision = 2
+  const saved = db.prepare('SELECT data FROM market_house WHERE region=?').get(region)
+  if (saved && JSON.parse(saved.data).demoRevision >= revision) return
+  const demo = demoData(region)
+  const house = demo.house.key
+  transaction(db, () => {
+    const lookup = db.prepare('SELECT source FROM market_snapshots WHERE house=? AND t=?')
+    for (const snapshot of demo.snapshots) {
+      const existing = lookup.get(house, snapshot.t)
+      if (existing && existing.source !== 'demo') continue
+      if (existing) {
+        for (const table of ['market_snapshots', 'market_rows', 'market_details', 'market_findings', 'market_signal_versions'])
+          db.prepare('DELETE FROM ' + table + ' WHERE house=? AND t=?').run(house, snapshot.t)
+      }
+      writeSnapshot(db, snapshot)
+    }
+    const end = demo.snapshots.at(-1).t
+    if (lookup.get(house, end)?.source === 'demo') {
+      for (const detail of demo.details) insertDetail(db, detail, end)
+    }
+    saveHouse(db, { ...demo.house, demoRevision: revision })
+  })
 }
 export function saveHouse(db, house) {
   db.prepare('INSERT OR REPLACE INTO market_house VALUES(?,?)').run(
@@ -101,9 +115,8 @@ function updateFindings(db, house, t, known, id = null) {
       archive.run(house, t, item, known, JSON.stringify(findings))
   }
 }
-export function insertSnapshot(db, snapshot) {
+function writeSnapshot(db, snapshot) {
   const { t, house, source, retrieved, items } = snapshot
-  if (latest(db, house)?.t >= t) return false
   db.prepare('INSERT INTO market_snapshots VALUES(?,?,?,?,?)').run(
     house,
     t,
@@ -127,6 +140,11 @@ export function insertSnapshot(db, snapshot) {
     )
   }
   updateFindings(db, house, t, retrieved)
+}
+export function insertSnapshot(db, snapshot) {
+  const { house, t } = snapshot
+  if (latest(db, house)?.t >= t) return false
+  writeSnapshot(db, snapshot)
   // Bound local storage to the provider's 30-day hourly history window.
   const before = t - 30 * 24 * HOUR
   for (const table of [
