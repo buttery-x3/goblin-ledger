@@ -24,13 +24,17 @@ test('demo endpoints produce fixed-haul price changes and coherent quantity-sens
   const {routes}=await inject('GET','farms');
   assert.equal(routes.find(r => r.id==='skulk-rock').rateCopperPerHour,228000);
   assert.equal(routes.find(r => r.id==='jintha-alor').rateCopperPerHour,266000);
-  for (const route of routes) {
+  const synthetic=routes.filter(r=>r.yieldBasis==='Demo scenario');
+  assert.equal(synthetic.length,3);
+  for (const route of routes.filter(r=>r.yieldBasis==='Yield unknown')) assert.equal(route.changeCopperPerHour,null);
+  for (const route of synthetic) {
     assert.equal(route.changeCopperPerHour,0);
     assert.ok(route.baselineTime<route.quote.t);
   }
   const {routes:scenario}=await inject('POST','farms/compare',{sessionMinutes:30,unitCopper:10000,approaches:{'jintha-alor':10}});
   assert.equal(scenario.find(r => r.id==='jintha-alor').sessionGoldCopper,66500);
   assert.equal(scenario[0].changeCopperPerHour,null);
+  assert.equal(scenario.find(r => r.id==='jangolode-linen').quote.ask,routes.find(r => r.id==='jangolode-linen').quote.ask);
   const quote=await inject('POST','crafts/quote',{recipeId:'menders-potion',quantity:10});
   assert.equal(quote.incrementalCopper,'-10150');
 });
@@ -38,7 +42,8 @@ test('demo endpoints produce fixed-haul price changes and coherent quantity-sens
 test('live starts without synthetic yield or asks, persists one run on retry and preserves revision history',async t => {
   const {inject,app,close}=suite('live');t.after(close);
   const {routes}=await inject('GET','farms');
-  assert.equal(routes.length,3);
+  assert.ok(routes.some(r=>r.id==='jangolode-linen'));
+  assert.equal(new Set(routes.map(r=>r.id)).size,routes.length);
   for (const r of routes) assert.deepEqual([r.rateCopperPerHour,r.quote,r.changeCopperPerHour],[null,null,null]);
   const run={id:'example-run-001',revision:1,elapsedMinutes:30,coinCopper:200,haul:[{itemId:8845,units:5,exit:'auction'}]};
   await inject('POST','farms/skulk-rock/runs',run);

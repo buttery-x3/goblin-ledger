@@ -18,6 +18,16 @@ import {
 const active = (g) => g.tabs.find((t) => t.id === g.active);
 const groupWith = (layout, type) => layout.groups.find((g) => active(g)?.type === type);
 
+test('opening a suggested farm carries the character, session and target to the selected route', () => {
+  const layout = patchPane(makeLayout('pair'), 'tab-1', { farmOptions: { feeBps:500 } });
+  const next = selectFarm(layout, 'jangolode-linen', 'tab-0', { actor:'ember', sessionMinutes:30, targetCopperPerHour:50000 });
+  const farm = active(groupWith(next, 'Farms'));
+  assert.equal(farm.selectedRoute, 'jangolode-linen');
+  assert.equal(farm.actor, 'ember');
+  assert.equal(farm.sessionMinutes, 30);
+  assert.deepEqual(farm.farmOptions, { feeBps:500, targetCopperPerHour:50000 });
+});
+
 test('all four arrangements round-trip including extent, filters and named layouts', () => {
   for (const preset of ['single', 'pair', 'terminal', 'eight']) {
     const current = patchPane(makeLayout(preset), 'tab-0', { extent: [400, 321, 2], overlay: 'coverage' });

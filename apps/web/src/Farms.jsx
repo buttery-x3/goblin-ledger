@@ -1,8 +1,7 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {useReactTable} from '@tanstack/react-table';
-import {farmSort, farmTableOptions} from './farm-table.js';
+import {farmRowsForActor, farmSort, farmTableOptions} from './farm-table.js';
 import {FarmReceipts} from './FarmReceipts.jsx';
-import {eligibility} from '../../../packages/domain/farms.mjs';
 import './farms.css';
 
 function money(copper) {
@@ -115,11 +114,11 @@ export function Farms({api,mode,region,pane,updatePane,selectedRoute,onSelectRou
   useEffect(() => {setTool('');},[selectedRoute,mode]);
   useEffect(() => {if (pane.revealRoute && focus.current) focus.current.scrollIntoView?.({block:'nearest'});},[pane.revealRoute,selectedRoute]);
   const actor = actors.find(a => a.id === pane.actor);
-  const list = compared ?? routes;
+  const list = useMemo(() => farmRowsForActor(compared ?? routes,pane.actor,actor),[compared,routes,pane.actor,actor]);
   const route = list.find(r => r.id === selectedRoute);
   const matches = useMemo(() => list.filter(r =>
     (r.name+' '+r.zone+' '+r.type+' '+r.output).toLowerCase().includes(query.toLowerCase())
-    && (!pane.skillOnly || eligibility(r,actor)==='Meets skill')
+    && (!pane.skillOnly || r.access?.state==='available')
   ),[list,query,actor,pane.skillOnly]);
   const filtered = r => matches.includes(r);
   const visible = useMemo(() => list.filter(r => matches.includes(r) || r.id===pane.revealRoute),[list,matches,pane.revealRoute]);
@@ -135,18 +134,18 @@ export function Farms({api,mode,region,pane,updatePane,selectedRoute,onSelectRou
   };
   return <section className="farm-pane" aria-label="Farm comparisons">
     <div className="farm-controls">
-      <input type="search" placeholder="Find a route or herb" aria-label="Search farms" value={query} onChange={e => updatePane({query:e.target.value,revealRoute:null})}/>
+      <input type="search" placeholder="Find a route or item" aria-label="Search farms" value={query} onChange={e => updatePane({query:e.target.value,revealRoute:null})}/>
       <select aria-label="Session length" value={session} onChange={e => updatePane({sessionMinutes:Number(e.target.value)})}>
         {[15,30,60,120].map(n => <option key={n} value={n}>{n} min</option>)}
       </select>
       <button aria-expanded={tool==='compare'} onClick={() => setTool(tool==='compare'?'':'compare')}>Compare</button>
     </div>
     {tool==='compare' && <div className="farm-inputs">
-      <Numeric label="Shared herb price (c)" value={options.unitCopper} placeholder="House ask" set={v => editOptions({unitCopper:v===''?null:v})}/>
+      <Numeric label="Ghost Mushroom scenario price (c)" value={options.unitCopper} placeholder="House ask" set={v => editOptions({unitCopper:v===''?null:v})}/>
       <Numeric label="Alternative return (c/h)" value={options.targetCopperPerHour ?? 100000} set={v => editOptions({targetCopperPerHour:v===''?100000:v})}/>
       <label>Character<select value={pane.actor ?? ''} onChange={e => updatePane({actor:e.target.value})}><option value="">Any character</option>
         {actors.map(a => <option value={a.id} key={a.id}>{a.name}</option>)}</select></label>
-      <label><input type="checkbox" checked={!!pane.skillOnly} onChange={e => updatePane({skillOnly:e.target.checked})}/> Meets observed skill</label>
+      <label><input type="checkbox" checked={!!pane.skillOnly} onChange={e => updatePane({skillOnly:e.target.checked})}/> Meets recorded requirements</label>
       {actor && <label><input type="checkbox" checked={options.allowAggregate!==false} onChange={e => editOptions({allowAggregate:e.target.checked})}/> Use all runs if this character has none</label>}
     </div>}
     {route && pane.revealRoute && !filtered(route) && <p>Showing selected route outside filter. <button onClick={() => updatePane({revealRoute:null})}>Return to filter</button></p>}
@@ -163,15 +162,15 @@ export function Farms({api,mode,region,pane,updatePane,selectedRoute,onSelectRou
     {notice && <p role="status">{notice}</p>}
     {route && (filtered(route) || pane.revealRoute===route.id) && <article className="farm-detail" key={route.id}>
       <h3>{route.name}</h3><p>{route.notes}</p>
-      <p>{route.requirements} · {actor ? actor.name+' · '+eligibility(route,actor) : 'No character selected'} · {route.geometry.precision}</p>
-      <p>{route.loops ?? '—'} complete loops · {route.approachMinutes} min approach · {route.runCount} samples · {route.sampleScope} · {route.priceBasis}
+      <p>{route.requirements} · {pane.actor ? (actor?.name ?? 'Selected character')+' · '+route.access.reason : 'No character selected'} · {route.geometry.precision}</p>
+      <p>{route.access && route.access.state!=='available' ? 'Check access before estimating a return' : (route.loops ?? '—')+' complete loops'} · {route.approachMinutes} min approach · {route.runCount} samples · {route.sampleScope} · {route.priceBasis}
         {route.quote?.t ? ' · '+new Date(route.quote.t).toLocaleString() : ''}</p>
       <p>Across samples · Coin {money(route.coinCopper)} · Vendor scenario {money(route.vendorCopper)} · Auction scenario {money(route.auctionCopper)} · Expenses {money(route.expenseCopper)} · Rare share {money(route.rareCopper)}</p>
       {route.realised && <p>After attributed sales · {route.realised.saleUnits} units settled for {money(route.realised.settledCopper)} net.
         Cash after expenses {money(route.realised.cashAfterExpensesCopper)} · Priced unsold auction units {money(route.realised.unsoldAuctionCopper)}
         {' · '}Unsold vendor estimate {money(route.realised.unsoldVendorCopper)} · Combined {money(route.realised.combinedCopper)}
         {route.realised.gaps.length>0 && ' · Remaining prices incomplete'}</p>}
-      <p>Sale cut scenario {route.feeBps/100}% · Match target at {route.requiredUnitsPerHour ?? '—'} herbs/hour before expenses.</p>
+      <p>Sale cut scenario {route.feeBps/100}% · Match target at {route.requiredUnitsPerHour ?? '—'} {route.output}/hour before expenses.</p>
       {route.baselineTime!=null && <p>Same haul and elapsed time · {money(route.changeCopperPerHour)}/h change since {new Date(route.baselineTime).toLocaleString()}.</p>}
       {!!route.gaps?.length && <p>Missing · {route.gaps.join(', ')}</p>}
       <a href={route.source} target="_blank" rel="noreferrer">Route source ↗</a>
@@ -194,7 +193,7 @@ function Scenario({route,options,apply}) {
     approaches:{...options.approaches,[route.id]:approach}
   });}}>
     <div className="farm-inputs"><Numeric label="Minutes per loop" min={1} max={1440} value={minutes} set={setMinutes}/>
-    <Numeric label="Herbs per loop" max={100000} value={units} set={setUnits}/><Numeric label="Approach (min)" max={1440} value={approach} set={setApproach}/></div>
+    <Numeric label={route.output+" per loop"} max={100000} value={units} set={setUnits}/><Numeric label="Approach (min)" max={1440} value={approach} set={setApproach}/></div>
     <div className="farm-controls"><button>Apply scenario</button><button type="button" onClick={() => {
       const scenarios={...options.scenarios},approaches={...options.approaches};delete scenarios[route.id];delete approaches[route.id];
       apply({scenarios,approaches});

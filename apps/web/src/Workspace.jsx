@@ -428,7 +428,7 @@ export function Workspace() {
           refreshRoutes,
           updatePane: (patch) => changeLayout((l) => patchPane(l, pane.id, patch)),
           selectedRoute: pane.type === 'Farms' ? (pane.selectedRoute ?? null) : layout.selectedRoute,
-          onSelectRoute: (id) => changeLayout((l) => selectFarm(l, id, pane.id)),
+          onSelectRoute: (id, activity) => changeLayout((l) => selectFarm(l, id, pane.id, activity)),
           routes,
         }
       : null;
