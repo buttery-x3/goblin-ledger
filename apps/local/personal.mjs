@@ -150,12 +150,12 @@ export function registerPersonal(app,ctx) {
   })
   route('post','install',(p,b)=>ctx.jobs.run('personal.install',p,{product:b.product}))
   route('post','import',p=>ctx.jobs.run('personal.import',p))
-  route('get','characters',p=>({characters:listCharacters(p)}))
+  route('get','characters',p=>({scope:pool(p),characters:listCharacters(p)}))
   route('get','positions',async p=>{
-    const positions=listPositions(p)
-    if (!positions.length) return {positions}
+    const scope=pool(p),positions=listPositions(p)
+    if (!positions.length) return {scope,positions}
     const getItem=ctx.marketItem??(await import('./market.mjs')).getMarketItem
-    return {positions:positions.map(position=>({...position,valuation:valuePosition(position,getItem(p,position.itemId))}))}
+    return {scope,positions:positions.map(position=>({...position,valuation:valuePosition(position,getItem(p,position.itemId))}))}
   })
   route('post','transactions',(p,b)=>transaction(p,b))
   route('put','notes',(p,b)=>saveNote(p,b))

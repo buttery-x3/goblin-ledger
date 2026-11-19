@@ -35,6 +35,7 @@ for (const key of [
   'CustomEvent',
   'Event',
   'Node',
+  'FormData',
 ]) {
   Object.defineProperty(globalThis, key, {
     configurable: true,
@@ -63,6 +64,14 @@ const routes = ['West cave', 'East cave'].map((name, i) => ({
 }));
 let stored = { version: 1, current: makeLayout('single'), named: [] };
 let saves = 0;
+const transferRequests = [];
+let accountScope = 'demo';
+const characters = [{ id: 'sender', name: 'Fern', realm: 'Example' }, { id: 'alt', name: 'Ember', realm: 'Example' }];
+const position = {
+  itemId: 42, variant: '-2', binding: 'tradeable', asset: '42/-2/tradeable',
+  economic: 8, physical: 8, knownUnits: 8, knownBasisCopper: '80', unknownUnits: 0,
+  realisedKnownCopper: '0', unreconciledUnits: 0, locations: [], receipts: [], transactions: [],
+};
 globalThis.fetch = async (url, options = {}) => {
   const path = String(url).replace('/api/v1', '');
   if (path === '/bootstrap')
@@ -74,7 +83,19 @@ globalThis.fetch = async (url, options = {}) => {
     return Response.json({ saved: true });
   }
   if (path === '/farms/compare') return Response.json({ routes });
-  if (path === '/personal/characters') return Response.json({ characters: [] });
+  if (path === '/personal/characters') return Response.json({ scope: accountScope, characters });
+  if (path === '/personal/positions') return Response.json({ scope: accountScope, positions: [position] });
+  if (path === '/personal/transactions') {
+    const tx = JSON.parse(options.body);
+    transferRequests.push(tx);
+    if (tx.scope !== accountScope) return Response.json({ error: 'Selected account changed' }, { status: 409 });
+    if (transferRequests.length === 1) {
+      position.transactions.push(tx);
+      throw new Error('Connection lost after saving');
+    }
+    assert.deepEqual(tx, transferRequests[0], 'Retry must keep the same transfer and receipt time');
+    return Response.json({ status: 'unchanged', id: tx.id });
+  }
   throw new Error('Unexpected DOM fixture request ' + path);
 };
 const until = async (check, message) => {
@@ -117,7 +138,54 @@ await until(
 );
 assert.equal(document.querySelectorAll('.workgroup').length, 2);
 assert.equal(one('[data-farm-id="route-0"]').getAttribute('aria-pressed'), 'true');
+
+function choose(select, value) {
+  select.value = value;
+  select.dispatchEvent(new window.Event('change', { bubbles: true }));
+}
+choose(one('select.pane-menu'), 'Positions');
+const transferSection = () => one('section[aria-label="Character transfers"]');
+await until(() => transferSection()?.querySelector('button'), 'Positions did not offer the transfer action');
+transferSection().closest('details').open = true;
+transferSection().querySelector('button').click();
+await until(() => transferSection().querySelector('form'), 'Transfer form did not open');
+const transferForm = transferSection().querySelector('form');
+const [sender, recipient] = transferForm.querySelectorAll('select');
+choose(sender, 'sender');
+await until(() => !recipient.querySelector('option[value="sender"]'), 'Sender must be excluded as a recipient');
+choose(recipient, 'alt');
+transferForm.elements.quantity.value = '3';
+const confirm = transferForm.querySelector('button[type="submit"]');
+await until(() => !confirm.disabled, 'Two characters are required');
+confirm.click();
+await until(() => transferSection().textContent.includes('Connection lost after saving'), 'Lost response should be visible');
+confirm.click();
+await until(() => !transferSection().querySelector('form') && transferSection().textContent.includes('Player-confirmed transfer'), 'Retried transfer is missing from history');
+assert.equal(transferRequests.length, 2);
+const tx = transferRequests[0];
+assert.equal(tx.action, 'transfer');
+assert.equal(tx.scope, 'demo');
+assert.deepEqual([tx.owner, tx.recipient, tx.quantity, tx.itemId, tx.variant, tx.binding],
+  ['sender', 'alt', 3, 42, '-2', 'tradeable']);
+assert.ok(tx.id && Number.isSafeInteger(tx.at));
+assert.equal(transferSection().querySelectorAll('p:not([role="status"])').length, 1);
+
+// The same GUIDs may be imported under another account while the form is open.
+transferSection().querySelector('button').click();
+await until(() => transferSection().querySelector('form'), 'Second transfer form did not open');
+const staleForm = transferSection().querySelector('form');
+const [oldSender, oldRecipient] = staleForm.querySelectorAll('select');
+choose(oldSender, 'sender');
+choose(oldRecipient, 'alt');
+staleForm.elements.quantity.value = '1';
+accountScope = 'another-fixture-account';
+position.transactions = [];
+staleForm.querySelector('button[type="submit"]').click();
+await until(() => transferRequests.length === 3 && !transferSection().querySelector('form'), 'Account change did not clear the stale draft');
+assert.equal(transferRequests[2].scope, 'demo');
+assert.equal(position.transactions.length, 0);
+assert.ok(!transferSection().textContent.includes('Player-confirmed transfer'));
 dom.window.close();
 console.log(
-  'Production UI DOM smoke passed: keyboard activation, distinct same-zone routes, split creation, detail, reuse and profile-bound persistence.',
+  'Production UI DOM smoke passed: Atlas selection, split persistence and idempotent character-transfer retry.',
 );
