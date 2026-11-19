@@ -54,7 +54,8 @@ export function quoteInputs(crafts, {books, asks, owned = {}, vendors = {}, feeB
     checkedInt(quantity,'Batch size',1,10000);
     for (const reagent of recipe.inputs) {
       const existing = needed.get(reagent.itemId) ?? {...reagent,required:0};
-      existing.required += quantity * reagent.units;
+      existing.required = checkedInt(existing.required + quantity * reagent.units,
+        'Required reagent units', 1, Number.MAX_SAFE_INTEGER);
       needed.set(reagent.itemId,existing);
     }
   }

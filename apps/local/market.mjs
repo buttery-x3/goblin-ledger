@@ -205,7 +205,7 @@ function envelope(profile, asOf) {
     mapping:
       profile.mode === 'demo'
         ? 'Synthetic PvP Alliance house'
-        : 'Provider-inferred PvP group; independent calibration pending',
+        : 'Provider-inferred PvP Alliance house. Item details offer a separate AHledger comparison with its own scan time.',
     status: !profileRegion(profile)
       ? 'choose-region'
       : !snapshot
@@ -429,10 +429,11 @@ export function registerMarket(app, ctx) {
       const key = 'catalog'
       const result = await limited(db, key, HOUR, async () => {
         log('Fetching the profession catalog')
+        let responseHeaders
         const catalog = normalizeRecipes(
-          await request('/api/recipes', signal, fetcher),
+          await request('/api/recipes', signal, fetcher, { headers: h => { responseHeaders = h } }),
         )
-        saveCatalog(db, catalog)
+        saveCatalog(db, catalog, Date.now(), responseHeaders)
         reserve(db, key, Date.now() + 7 * day)
         log('Imported ' + catalog.entries.length + ' recipe links')
         return { count: catalog.entries.length }

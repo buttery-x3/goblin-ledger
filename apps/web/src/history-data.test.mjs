@@ -90,6 +90,15 @@ test('research bands use publication, revision and effective days without placin
   )
 })
 
+test('a first-hand observation marks its UTC day even without a public link', () => {
+  const start = Date.UTC(2025, 0, 2);
+  const rows = [{t:start,ask:10}, {t:start + HOUR,ask:10}];
+  const article = {title:'Fixture hand-in',url:null,observedAt:'2025-01-02T00:30:00.000Z'};
+  const [band] = prepareHistory(rows,'ask',null,[article]).researchDays;
+  assert.equal(band.day,'2025-01-02');
+  assert.deepEqual(band.events,[{title:'Fixture hand-in',url:null,kind:'Hand-in observed'}]);
+});
+
 test('single observations and entirely unavailable windows retain their dates and coverage', () => {
   const all = prepareHistory(
     [sample(0, { sold: null }), sample(1, { sold: null })],

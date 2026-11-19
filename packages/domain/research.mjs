@@ -31,6 +31,15 @@ function field(value, max) {
   return value.trim();
 }
 
+export const USE_KINDS = ['source report', 'build change', 'observed turn-in'];
+
+export function utcInstant(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?(?:Z|[+-]\d\d:\d\d)$/.test(value) || !Number.isFinite(Date.parse(value)))
+    throw new Error('Supply an observation time with a timezone.');
+  dateOnly(value.slice(0,10));
+  return new Date(value).toISOString();
+}
+
 export function normalizeArticle(input) {
   const action = input.action;
   if (!ACTIONS.includes(action)) throw new Error('Unknown research action.');
@@ -41,9 +50,45 @@ export function normalizeArticle(input) {
   const itemIds = [...new Set(raw)].sort((a,b) => a-b);
   const publishedOn = dateOnly(input.publishedOn), revisedOn = dateOnly(input.revisedOn);
   if (revisedOn && publishedOn && revisedOn < publishedOn) throw new Error('Revision predates publication.');
-  return {url: canonicalUrl(input.url), publisher: field(input.publisher,100), title: field(input.title,200), summary: field(input.summary,800),
-    publishedOn, revisedOn, effectiveOn: dateOnly(input.effectiveOn), action, routeId, itemIds,
-    scope: routeId ? 'route' : 'item', reach: null, evidence: field(input.evidence || 'player note',50)};
+  const kind = action === 'changed use' ? input.useKind || 'source report' : null;
+  const effectiveOn = dateOnly(input.effectiveOn);
+  if (kind && !USE_KINDS.includes(kind)) throw new Error('Unknown item-use evidence type.');
+  if (kind && !itemIds.length) throw new Error('Link at least one affected item ID.');
+  if (kind === 'build change' && !effectiveOn) throw new Error('Enter the build change’s effective date.');
+  const localId = input.localId;
+  if (localId != null && (typeof localId !== 'string' || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(localId)))
+    throw new Error('Invalid local observation ID.');
+  const url = !input.url && localId && (kind === 'observed turn-in' || action === 'watch') ? null : canonicalUrl(input.url);
+  const change = {};
+  if (localId) change.localId = localId.toLowerCase();
+  if (kind && kind !== 'source report') {
+    change.useKind = kind;
+    change.useContext = field(input.useContext,160);
+    if (kind === 'observed turn-in') {
+      change.observedAt = utcInstant(input.observedAt);
+      if (effectiveOn && change.observedAt.slice(0,10) < effectiveOn) throw new Error('The hand-in predates the effective date.');
+    }
+  }
+  return {url, publisher: field(input.publisher,100), title: field(input.title,200), summary: field(input.summary,800),
+    publishedOn, revisedOn, effectiveOn, action, routeId, itemIds,
+    scope: routeId ? 'route' : 'item', reach: null, evidence: field(input.evidence || 'player note',50), ...change};
+}
+
+// Each surviving source revision is one piece of evidence about its tagged items.
+export function itemUseThesis(article, asOf) {
+  if (article.action !== 'changed use' || !article.itemIds.length) return null;
+  if (article.useKind === 'observed turn-in') return 'Turn-in observed';
+  if (article.useKind !== 'build change') return 'Possible item use';
+  const day = asOf.slice(0,10);
+  if (article.effectiveOn > day) return 'Scheduled build change';
+  if (article.effectiveOn === day) return 'Build change dated today (time unknown)';
+  return 'Build change reported effective';
+}
+
+export function comparisonDay(article) {
+  if (article.useKind === 'observed turn-in') return article.observedAt.slice(0,10);
+  if (article.action === 'changed use') return article.effectiveOn || article.revisedOn || article.publishedOn;
+  return article.revisedOn || article.publishedOn;
 }
 
 // Pair hours at equal offsets either side of the guide date; omit the entire

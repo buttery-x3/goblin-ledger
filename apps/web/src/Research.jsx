@@ -1,7 +1,10 @@
 import React, {useEffect, useState} from 'react';
-import {ACTIONS} from '../../../packages/domain/research.mjs';
+import {ItemUseEvidence} from './ItemUseEvidence.jsx';
+import {refreshMarketReads} from './market-query.js';
+import {ACTIONS,USE_KINDS} from '../../../packages/domain/research.mjs';
 import {legacyRules,LEGACY_SOURCE,RECIPE_SOURCE} from '../../../packages/domain/progression.mjs';
 import {ChoiceCalculator} from './CraftChoices.jsx';
+import {CraftCatalog} from './CraftCatalog.jsx';
 import './research.css';
 
 function useRead(api, path, refreshKey) {
@@ -24,26 +27,37 @@ const initial = {title:'',url:'',publisher:'',summary:'',action:'gather',routeId
 
 function EvidenceEditor({api,routes,onSave,initialValue}) {
   const [form,setForm] = useState(initialValue), [error,setError] = useState(''), [saving,setSaving] = useState(false);
+  const changedUse = form.action === 'changed use';
+  const kind = form.useKind || 'source report';
+  const observation = changedUse && kind === 'observed turn-in';
+  const needsLink = !observation && !(form.localId && form.action === 'watch');
+  const [draftId] = useState(() => crypto.randomUUID());
   const bind = key => ({value:form[key] || '',onChange:e => setForm({...form,[key]:e.target.value})});
   const submit = async e => {
     e.preventDefault(); setError(''); setSaving(true);
     try {
       const itemIds = form.ids.trim() ? form.ids.split(',').map(s => Number(s.trim())) : [];
-      await api('/research',{method:'POST',body:{...form,itemIds}});
-      onSave();
+      const observedAt = observation && form.observedTime ? form.observedTime+(form.observedTime.length === 16 ? ':00Z' : 'Z') : undefined;
+      const localId = form.localId || (observation && !form.id ? draftId : undefined);
+      const result = await api('/research',{method:'POST',body:{...form,itemIds,localId,observedAt,baseRevision:form.revision}});
+      onSave(result.id);
     } catch(err){setError(err.message);} finally {setSaving(false);}
   };
   return <form onSubmit={submit} className="rs-form">
-    <Label name="Source link"><input type="url" required maxLength={2000} {...bind('url')}/></Label>
-    <div className="rs-grid"><Label name="Title"><input required maxLength={200} {...bind('title')}/></Label>
-    <Label name="Publisher"><input required maxLength={100} {...bind('publisher')}/></Label></div>
-    <Label name="Advice or observed change"><textarea required maxLength={800} {...bind('summary')}/></Label>
     <div className="rs-grid"><Label name="Action"><select {...bind('action')}>{ACTIONS.map(a => <option key={a}>{a}</option>)}</select></Label>
+      {changedUse && <Label name="Evidence type"><select value={kind} onChange={e=>setForm({...form,useKind:e.target.value})}>{USE_KINDS.map(k=><option key={k}>{k}</option>)}</select></Label>}</div>
+    <Label name={needsLink ? 'Source link' : 'Supporting link (optional)'}><input type="url" required={needsLink} readOnly={!!form.id && !form.localId} maxLength={2000} {...bind('url')}/></Label>
+    <div className="rs-grid"><Label name="Title"><input required maxLength={200} {...bind('title')}/></Label>
+    <Label name={observation ? "Observer or local record" : "Publisher"}><input required maxLength={100} {...bind('publisher')}/></Label></div>
+    <Label name="Advice or observed change"><textarea required maxLength={800} {...bind('summary')}/></Label>
+    <div className="rs-grid">
+    {changedUse && kind !== 'source report' && <Label name={observation ? 'Turn-in and game context' : 'Game build'}><input required maxLength={160} {...bind('useContext')}/></Label>}
+    {observation && <Label name="Hand-in observed (UTC)"><input type="datetime-local" step="any" required {...bind('observedTime')}/></Label>}
     <Label name="Named route"><select {...bind('routeId')}><option value="">Item-wide</option>{routes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></Label>
-    <Label name="Item IDs, comma separated"><input {...bind('ids')} placeholder="8845"/></Label>
+    <Label name="Item IDs, comma separated"><input required={changedUse} {...bind('ids')} placeholder="8845"/></Label>
     <Label name="Published"><input type="date" {...bind('publishedOn')}/></Label>
     <Label name="Revised"><input type="date" {...bind('revisedOn')}/></Label>
-    <Label name="Game change effective"><input type="date" {...bind('effectiveOn')}/></Label></div>
+    <Label name="Game change effective"><input type="date" required={changedUse && kind === 'build change'} {...bind('effectiveOn')}/></Label></div>
     <ErrorLine error={error}/><button type="submit" disabled={saving}>Save evidence</button>
   </form>;
 }
@@ -68,7 +82,7 @@ function Response({api,article,asOf,refreshKey}) {
   return <div className="rs-readout"><strong>Before / after</strong><ErrorLine error={error}/>
     {data ? <>{c && <span>{c.before} / {c.after} observed hours · {c.pairs} paired of {c.hours}</span>}
     <span>{c?.reason || data.reason || ('Mean paired ask change '+c.priceChangeCopper.toLocaleString()+'c · listed units '+c.supplyChange.toLocaleString())}</span>
-    {c && <small>Equal UTC windows either side of the dated advice, excluding its calendar day. Price and supply describe the house.</small>}</> : !error && <span>Loading house observations…</span>}
+    {c && <small>Equal UTC windows either side of {data.day}, excluding that calendar day. Price and supply describe the house.</small>}</> : !error && <span>Loading house observations…</span>}
   </div>;
 }
 
@@ -88,23 +102,23 @@ export function Research({api,routes=[],pane={},updatePane,onSelectRoute,refresh
     <button disabled={!!replay} onClick={()=>setEditor(editor ? null : {...initial})}>{editor ? 'Close editor':'Add source'}</button>
     <button disabled={busy || !!replay} onClick={()=>run(()=>api('/research/refresh',{method:'POST',body:{}}))}>Check guide</button></div>
     <ErrorLine error={error || problem}/>
-    {editor && !replay && <EvidenceEditor key={editor.url} api={api} routes={routes} initialValue={editor} onSave={()=>{setEditor(null);reload();}}/>}
+    {editor && !replay && <EvidenceEditor key={editor.id || 'new'} api={api} routes={routes} initialValue={editor} onSave={id=>{setEditor(null);updatePane({articleId:id});reload();refreshMarketReads(api,mode,region);}}/>}
     {!data && !error && <p>Loading source revisions…</p>}
     {data && !items.length && <p>No research was recorded by this date.</p>}
     {selected && <>
       <Label name="Source"><select value={selected.id} onChange={e=>updatePane({articleId:e.target.value})}>{items.map(a=><option key={a.id} value={a.id}>{a.publisher} · {a.title}</option>)}</select></Label>
       <article className="rs-card"><small>{selected.action.toUpperCase()} · {selected.evidence} · revision {selected.revision}</small>
-        <h3>{selected.title}</h3><p>{selected.summary}</p>
+        {selected.useThesis ? <ItemUseEvidence record={selected}/> : <><h3>{selected.title}</h3><p>{selected.summary}</p></>}
         <dl><dt>Published</dt><dd>{selected.publishedOn || 'Unknown'}</dd><dt>Revised</dt><dd>{selected.revisedOn || 'Unknown'}</dd>
-        {selected.effectiveOn && <><dt>Game change effective</dt><dd>{selected.effectiveOn}</dd></>}
+        {!selected.useThesis && selected.effectiveOn && <><dt>Game change effective</dt><dd>{selected.effectiveOn}</dd></>}
         <dt>First seen locally</dt><dd>{new Date(selected.firstSeenAt).toLocaleString()}</dd>
-        <dt>Audience reach</dt><dd>Unknown</dd>
-        {selected.itemIds.length > 0 && <><dt>Items</dt><dd>{selected.itemIds.join(', ')}</dd></>}
+        {!selected.useThesis && <><dt>Audience reach</dt><dd>Unknown</dd></>}
+        {!selected.useThesis && selected.itemIds.length > 0 && <><dt>Items</dt><dd>{selected.itemIds.join(', ')}</dd></>}
         <dt>Applies to</dt><dd>{selected.routeId ? <button onClick={()=>onSelectRoute(selected.routeId)}>{routes.find(r=>r.id===selected.routeId)?.name || selected.routeId}</button> : 'Linked items'}</dd></dl>
-        <Source url={selected.url} label={selected.publisher}/>
+        {!selected.useThesis && selected.url && <Source url={selected.url} label={selected.publisher}/>}
       </article>
       <Response api={api} article={selected} asOf={replay} refreshKey={refresh}/>
-      {!replay && <button onClick={()=>setEditor({...initial,...selected,ids:selected.itemIds.join(', ')})}>Record a revision</button>}
+      {!replay && <button onClick={()=>setEditor({...initial,...selected,ids:selected.itemIds.join(', '),observedTime:selected.observedAt?.slice(0,-1)})}>Record a revision</button>}
       {selected.annotation && <p><strong>Model note</strong> · {selected.annotation.summary} <small>{selected.annotation.model} · prompt {selected.annotation.promptVersion}</small></p>}
       {data?.ai && !replay && <button disabled={busy} onClick={()=>run(()=>api('/research/'+selected.id+'/annotation',{method:'POST',body:{revision:selected.revision}}))}>Generate local note</button>}
     </>}
@@ -176,8 +190,11 @@ export function Professions({api,refreshKey,mode,region}) {
   const refresh=[mode,region,refreshKey].join('|');
   const catalog=useRead(api,'/crafts/catalog',refresh);
   return <section className="rs-panel"><ErrorLine error={catalog.error}/>
+    {mode==='live' && <CraftCatalog key={region ?? 'unset'} api={api} region={region} refresh={refresh} money={money}/>}
     {(!catalog.data && !catalog.error) && <p>Loading recipes…</p>}
-    {catalog.data?.recipes.map(r=><Batch key={r.id} api={api} recipe={r} refresh={refresh}/>)}
+    {catalog.data?.recipes.map(r=>mode==='live'
+      ? <details key={r.id}><summary>{r.name} starter example</summary><Batch api={api} recipe={r} refresh={refresh}/></details>
+      : <Batch key={r.id} api={api} recipe={r} refresh={refresh}/>)}
     <Progression api={api} refresh={refresh}/>
     <ChoiceCalculator api={api} mode={mode} region={region}/>
   </section>;

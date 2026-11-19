@@ -41,7 +41,7 @@ try {
   await request("/settings", "PUT", { mode: "live", region });
   await session();
   await request("/markets/refresh", "POST", {});
-  const market = await request("/markets?limit=10");
+  const market = await request("/markets?sort=listed&direction=desc&limit=40");
   if (!market.snapshot?.t || !market.count)
     throw Error("No coherent market published");
   evidence.archive = {
@@ -55,9 +55,10 @@ try {
     rows: opportunity.count,
   };
   const known = await request("/markets?q=18945&limit=1");
-  const ids = [
-    ...new Set([...known.items, ...market.items].map((i) => i.id)),
-  ].slice(0, 3);
+  const commodities = [...known.items, ...market.items].filter(
+    (item) => item.commodity && item.ask > 0 && item.listed > 0,
+  );
+  const ids = [...new Set(commodities.map((item) => item.id))].slice(0, 3);
   if (ids.length) {
     await request("/markets/" + ids[0] + "/detail", "POST", {});
     const item = await request("/markets/" + ids[0] + "?quantity=12");
@@ -76,15 +77,16 @@ try {
         "POST",
         {},
       );
-      const comparable =
+      const sameWindow =
         Number.isFinite(secondary.observedAt) &&
-        Math.abs(secondary.observedAt - market.snapshot.t) <= 3600000 &&
-        secondary.ask != null &&
-        primary.item?.ask != null;
+        Math.abs(secondary.observedAt - market.snapshot.t) <= 3600000;
+      const compareAsk = sameWindow && secondary.ask != null && primary.item?.ask != null;
+      const compareListed = sameWindow && secondary.listed != null && primary.item?.listed != null;
       evidence.secondary.push({
         id,
-        state: comparable ? "comparable" : "different-time-or-unavailable",
-        sameAsk: comparable ? secondary.ask === primary.item.ask : null,
+        state: compareAsk || compareListed ? "comparable" : "different-time-or-unavailable",
+        sameAsk: compareAsk ? secondary.ask === primary.item.ask : null,
+        sameListed: compareListed ? secondary.listed === primary.item.listed : null,
         observedAt: secondary.observedAt,
       });
     } catch (error) {
