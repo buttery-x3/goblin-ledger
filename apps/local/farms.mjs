@@ -72,6 +72,9 @@ function routeReport(profile, base, options, lookup, history, activityView) {
     saved = savedRuns(profile,route);
     scope = 'All characters · fallback';
   }
+  const completedBy = route.accessCheck ? profile.db.prepare(
+    "SELECT DISTINCT json_extract(details,'$.characterId') AS actor FROM farm_runs WHERE route=? AND revision=? AND COALESCE(account,?)=? AND json_type(details,'$.characterId')='text'"
+  ).all(route.id,route.revision,legacyAccount(profile),pool(profile)).map(row=>row.actor) : [];
   const draft = options.scenarios?.[route.id];
   const samples = draft ? [validRun(draft)] : saved.length ? saved : profile.mode === 'demo' && allowFallback ? fixtureRun(route) : [];
   if (draft) scope = 'Manual scenario';
@@ -117,7 +120,7 @@ function routeReport(profile, base, options, lookup, history, activityView) {
   const guideArticles = activityView ? [] : routeExposure(profile,route.id);
   return {...route,...returns,approachMinutes,exposure:guideArticles.length,guideArticles,changeCopperPerHour,baselineTime,
     coverage:samples.length,quote:prices[route.outputId] ?? null,feeBps:options.feeBps ?? 500,
-    actorId,sampleScope:scope,sampleLimit:500,
+    actorId,completedBy,sampleScope:scope,sampleLimit:500,
     yieldBasis:draft ? 'Scenario' : saved.length ? 'Personal runs' : samples.length ? 'Demo scenario' : 'Yield unknown',
     priceBasis:primaryOverride != null ? 'Scenario' : profile.mode === 'demo' ? 'Demo house' : prices[route.outputId]?.ask != null ? 'House ask' : 'Price unknown',
     realised:!activityView && !draft && saved.length ? realisedView(profile,saved,{...fixed,prices}) : null,

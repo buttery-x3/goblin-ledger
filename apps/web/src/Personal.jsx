@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { progressionForCharacter } from '../../../packages/domain/progression.mjs'
+import { activityAccess } from '../../../packages/domain/character-activities.mjs'
 import { CharacterActivities } from './CharacterActivities.jsx'
 import './personal.css'
 
@@ -20,18 +21,6 @@ function usePersonal(api,route,mode,refreshKey) {
   return {data,error,reload:()=>bump(n=>n+1)}
 }
 function Notice({msg}){return msg?<p className="personal-notice" role="status">{msg}</p>:null}
-function eligibility(c,route) {
-
-  if (!route) return null
-  if (route.minLevel && c.level<route.minLevel) return 'Level '+route.minLevel+' required'
-  if (route.profession && route.skill) {
-    const found=c.professions.find(p=>p.name.toLowerCase()===String(route.profession).toLowerCase())
-    if (!found) return 'Profession unobserved'
-    if (found.skill<route.skill) return route.profession+' '+route.skill+' required'
-    return 'Recorded requirements met'
-  }
-  return null
-}
 export function Characters({api,mode,region,refreshKey,routes=[],selectedRoute,onSelectRoute}) {
   const {data,error}=usePersonal(api,'characters',mode,refreshKey)
   const [completion,setCompletion]=useState({})
@@ -51,7 +40,7 @@ export function Characters({api,mode,region,refreshKey,routes=[],selectedRoute,o
             <dt>Class challenge</dt><dd>{progress.classChallenge?.label||'No further recorded challenge'}</dd>
             {progress.professionChallenges?.length>0&&<><dt>Profession challenges</dt><dd>{progress.professionChallenges.map(p=>p.label).join(' · ')}</dd></>}
             {progress.recipe&&<><dt>Recipe</dt><dd>{progress.recipe.label}</dd></>}
-            {route&&<><dt>{route.name}</dt><dd>{eligibility(c,route)||'Review route requirements'}</dd></>}
+            {route&&<><dt>{route.name}</dt><dd>{activityAccess(route,c).reason}</dd></>}
           </dl></details>
       })}
   </div>

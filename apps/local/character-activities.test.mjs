@@ -114,6 +114,23 @@ test('rank whole sessions using this character’s runs, keep borrowed yields an
   }
 });
 
+test('the item and the character report use the same guarded-route evidence across alts and accounts',async t=>{
+  const {profile,request,suggestions,run,character}=environment(t);
+  character('sage',55,'Herbalism',250);
+  character('brook',55,'Herbalism',250);
+  await run('jintha-alor','recorded-guarded-run','sage',15,8845,7);
+  const roster=[{id:'sage',name:'Sage',professions:[{name:'Herbalism',skill:250}]},{id:'brook',name:'Brook',professions:[{name:'Herbalism',skill:250}]}];
+  const houseRoute=async()=>(await request('farms')).json().routes.find(r=>r.id==='jintha-alor');
+  const marketRoute=await houseRoute();
+  for(const actor of roster) {
+    const report=(await suggestions(actor.id)).activities.find(a=>a.routeId==='jintha-alor');
+    assert.equal(activityAccess(marketRoute,actor).state,report.access.state);
+  }
+  assert.deepEqual(marketRoute.completedBy,['sage']);
+  setConfig(profile,{account:'test-two',product:'test-product'});
+  assert.deepEqual((await houseRoute()).completedBy,[]);
+});
+
 test('a named character report is scoped to the active account and rejects invalid sessions',async t=>{
   const {profile,request,character}=environment(t);
   character('A',25,'Mining',50);

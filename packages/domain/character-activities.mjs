@@ -18,8 +18,10 @@ export function activityAccess(route, actor) {
     return {state:!Number.isInteger(level) || level<low ? 'check' : 'available',reason};
   }
   if (route.accessCheck) {
-    return {state:route.actorId===actor.id && route.sampleScope==='Selected character' && route.runCount>0 ? 'available':'check',
-      reason:skillEvidence+route.accessCheck};
+    const completed = route.completedBy?.includes(actor.id) ||
+      (route.actorId===actor.id && route.sampleScope==='Selected character' && route.runCount>0);
+    return {state:completed ? 'available':'check',
+      reason:skillEvidence+(completed ? actor.name+' has recorded a run on this route.' : route.accessCheck)};
   }
   return {state:'available',reason:skillEvidence.trim() || 'No gathering profession required.'};
 }

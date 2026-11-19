@@ -1,8 +1,7 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {useReactTable} from '@tanstack/react-table';
-import {farmSort, farmTableOptions} from './farm-table.js';
+import {farmRowsForActor, farmSort, farmTableOptions} from './farm-table.js';
 import {FarmReceipts} from './FarmReceipts.jsx';
-import {eligibility} from '../../../packages/domain/farms.mjs';
 import './farms.css';
 
 function money(copper) {
@@ -115,11 +114,11 @@ export function Farms({api,mode,region,pane,updatePane,selectedRoute,onSelectRou
   useEffect(() => {setTool('');},[selectedRoute,mode]);
   useEffect(() => {if (pane.revealRoute && focus.current) focus.current.scrollIntoView?.({block:'nearest'});},[pane.revealRoute,selectedRoute]);
   const actor = actors.find(a => a.id === pane.actor);
-  const list = compared ?? routes;
+  const list = useMemo(() => farmRowsForActor(compared ?? routes,pane.actor,actor),[compared,routes,pane.actor,actor]);
   const route = list.find(r => r.id === selectedRoute);
   const matches = useMemo(() => list.filter(r =>
     (r.name+' '+r.zone+' '+r.type+' '+r.output).toLowerCase().includes(query.toLowerCase())
-    && (!pane.skillOnly || eligibility(r,actor)==='Meets skill')
+    && (!pane.skillOnly || r.access?.state==='available')
   ),[list,query,actor,pane.skillOnly]);
   const filtered = r => matches.includes(r);
   const visible = useMemo(() => list.filter(r => matches.includes(r) || r.id===pane.revealRoute),[list,matches,pane.revealRoute]);
@@ -146,7 +145,7 @@ export function Farms({api,mode,region,pane,updatePane,selectedRoute,onSelectRou
       <Numeric label="Alternative return (c/h)" value={options.targetCopperPerHour ?? 100000} set={v => editOptions({targetCopperPerHour:v===''?100000:v})}/>
       <label>Character<select value={pane.actor ?? ''} onChange={e => updatePane({actor:e.target.value})}><option value="">Any character</option>
         {actors.map(a => <option value={a.id} key={a.id}>{a.name}</option>)}</select></label>
-      <label><input type="checkbox" checked={!!pane.skillOnly} onChange={e => updatePane({skillOnly:e.target.checked})}/> Meets observed skill</label>
+      <label><input type="checkbox" checked={!!pane.skillOnly} onChange={e => updatePane({skillOnly:e.target.checked})}/> Meets recorded requirements</label>
       {actor && <label><input type="checkbox" checked={options.allowAggregate!==false} onChange={e => editOptions({allowAggregate:e.target.checked})}/> Use all runs if this character has none</label>}
     </div>}
     {route && pane.revealRoute && !filtered(route) && <p>Showing selected route outside filter. <button onClick={() => updatePane({revealRoute:null})}>Return to filter</button></p>}
@@ -163,8 +162,8 @@ export function Farms({api,mode,region,pane,updatePane,selectedRoute,onSelectRou
     {notice && <p role="status">{notice}</p>}
     {route && (filtered(route) || pane.revealRoute===route.id) && <article className="farm-detail" key={route.id}>
       <h3>{route.name}</h3><p>{route.notes}</p>
-      <p>{route.requirements} · {actor ? actor.name+' · '+eligibility(route,actor) : 'No character selected'} · {route.geometry.precision}</p>
-      <p>{route.loops ?? '—'} complete loops · {route.approachMinutes} min approach · {route.runCount} samples · {route.sampleScope} · {route.priceBasis}
+      <p>{route.requirements} · {pane.actor ? (actor?.name ?? 'Selected character')+' · '+route.access.reason : 'No character selected'} · {route.geometry.precision}</p>
+      <p>{route.access && route.access.state!=='available' ? 'Check access before estimating a return' : (route.loops ?? '—')+' complete loops'} · {route.approachMinutes} min approach · {route.runCount} samples · {route.sampleScope} · {route.priceBasis}
         {route.quote?.t ? ' · '+new Date(route.quote.t).toLocaleString() : ''}</p>
       <p>Across samples · Coin {money(route.coinCopper)} · Vendor scenario {money(route.vendorCopper)} · Auction scenario {money(route.auctionCopper)} · Expenses {money(route.expenseCopper)} · Rare share {money(route.rareCopper)}</p>
       {route.realised && <p>After attributed sales · {route.realised.saleUnits} units settled for {money(route.realised.settledCopper)} net.
