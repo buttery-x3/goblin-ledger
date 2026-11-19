@@ -1,0 +1,9 @@
+.character-activities {padding-bottom:.9rem}
+.character-activities h3 {margin:.25rem 0 .65rem}
+.character-activities h4 {margin:1rem 0 .3rem}
+.activity-list {padding:0;list-style:none;margin:.25rem 0}
+.activity-card {padding:.6rem 0;border-top:1px solid #66787546}
+.activity-card .activity-route {background:none;border:0;padding:0;text-align:left;color:var(--accent,#d3ba80);font:inherit;font-weight:650;text-decoration:underline;text-underline-offset:.16em}
+.activity-card details {border:0}
+.activity-card div,.character-activities p {overflow-wrap:anywhere}
+.character-activities .personal-form {align-items:end}

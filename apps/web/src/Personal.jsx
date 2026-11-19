@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { progressionForCharacter } from '../../../packages/domain/progression.mjs'
+import { CharacterActivities } from './CharacterActivities.jsx'
 import './personal.css'
 
 const fmt=Intl.NumberFormat()
@@ -31,13 +32,14 @@ function eligibility(c,route) {
   }
   return null
 }
-export function Characters({api,mode,refreshKey,routes=[],selectedRoute}) {
+export function Characters({api,mode,region,refreshKey,routes=[],selectedRoute,onSelectRoute}) {
   const {data,error}=usePersonal(api,'characters',mode,refreshKey)
   const [completion,setCompletion]=useState({})
   useEffect(()=>{let active=true;setCompletion({});api('/progression/account').then(r=>{if(active)setCompletion(r.completion||{})}).catch(()=>{});return ()=>{active=false}},[api,mode,refreshKey])
   if (!data) return <Notice msg={error||'Loading characters…'}/>
   const route=routes.find(r=>r.id===selectedRoute)
   return <div className="personal-pane"><Notice msg={error}/>
+    <CharacterActivities api={api} mode={mode} region={region} refreshKey={refreshKey} scope={data.scope} characters={data.characters} onSelectRoute={onSelectRoute}/>
     {!data.characters.length?<p>Install the addon in Settings, choose an account, then log out or reload WoW to save your first character observation.</p>:
       data.characters.map(c=>{
         const progress=progressionForCharacter(c,completion)

@@ -15,6 +15,12 @@ Setup installs the locked dependencies and builds the frontend. For subsequent s
 
 A Windows build artifact contains the built interface and its service dependencies. Extract the inner GoblinLedger-windows.zip, then run Start-GoblinLedger.cmd from the extracted folder.
 
+## Read the house and choose an activity
+
+Open **Opportunities → House trends** to see rising and falling asks, changes in listed supply and how many items had comparable observations. Choose the previous scan, 24 hours or seven days. On the first scan you can already inspect current supply. Open a mover to see its price history. When the item has a known farm, expand **Where to farm this item** for routes and the characters who meet their recorded requirements.
+
+In **Characters → Gold-making activities**, choose an alt and a session length. Each suggestion names the item and location, explains the character’s requirements and links to the route in Farms. A route without a measured yield shows the units per hour needed to meet your target when an ask is available. You can explore these leads as soon as market and character data arrive.
+
 ## First session
 
 1. Open **Settings**, choose **Live**, select **US** or **EU**, then **Apply profile**. The collector discovers the PvP Alliance house for that region. To explore with synthetic prices and characters, select **Demo**. Each profile has its own database and saved arrangements.

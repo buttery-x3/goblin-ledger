@@ -3,6 +3,8 @@ import { ItemUseEvidence } from './ItemUseEvidence.jsx'
 import { History } from './MarketHistory.jsx'
 import { useMarketRead, refreshMarketReads } from './market-query.js'
 import './markets.css'
+import { HouseMarketOverview } from './HouseMarketOverview.jsx'
+import { ItemActivities } from './ItemActivities.jsx'
 
 const number = (value) => (value == null ? '—' : Number(value).toLocaleString())
 function money(value) {
@@ -75,6 +77,8 @@ function Waiting({ data, error, loading }) {
         Choose US or EU in Settings to collect your PvP Alliance house.
       </p>
     )
+  if (data && !data.snapshot && data.asOf != null)
+    return <p className="market-state">No house snapshot was available by this decision time.</p>
   if (data && !data.snapshot)
     return (
       <p className="market-state">
@@ -147,7 +151,7 @@ function Crosscheck({ api, id }) {
     </section>
   )
 }
-function Detail({ id, api, mode, region, refresh, goBack }) {
+function Detail({ id, api, mode, region, refresh, goBack, routes, onSelectRoute }) {
   const [quantity, setQuantity] = useState(1)
   const { data, loading, error } = useMarketRead(
     api,
@@ -205,6 +209,8 @@ function Detail({ id, api, mode, region, refresh, goBack }) {
                   : 'Awaiting a house snapshot.'}
               </p>
             )}
+            <ItemActivities itemId={Number(id)} routes={routes} onSelectRoute={onSelectRoute}
+              api={api} mode={mode} region={region} refresh={refresh}/>
             <History
               rows={data.history}
               method={data.detail?.method}
@@ -334,6 +340,8 @@ function Detail({ id, api, mode, region, refresh, goBack }) {
 
 export function Markets({
   api,
+  routes = [],
+  onSelectRoute,
   mode,
   region,
   pane = {},
@@ -364,6 +372,8 @@ export function Markets({
       <Detail
         key={region + '-' + marketItem}
         id={marketItem}
+          routes={routes}
+          onSelectRoute={onSelectRoute}
         region={region}
         api={api}
         mode={mode}
@@ -481,6 +491,8 @@ export function Markets({
 }
 export function Opportunities({
   api,
+  routes = [],
+  onSelectRoute,
   mode,
   region,
   pane = {},
@@ -493,9 +505,16 @@ export function Opportunities({
     asOf = '',
     offset = 0,
     opportunityItem = null,
+    opportunityView = 'house',
+    houseWindow = 'previous',
   } = pane
 
-  const params = new URLSearchParams({ action, order, offset, limit: 30 })
+  const houseView = opportunityView !== 'signals'
+  const params = new URLSearchParams(
+    houseView
+      ? { view: 'house', window: houseWindow }
+      : { action, order, offset, limit: 30 },
+  )
   if (asOf && Number.isFinite(Date.parse(asOf)))
     params.set('asOf', String(Date.parse(asOf)))
   const { data, error, loading } = useMarketRead(
@@ -510,6 +529,8 @@ export function Opportunities({
       <Detail
         key={region + '-' + opportunityItem}
         id={opportunityItem}
+          routes={routes}
+          onSelectRoute={onSelectRoute}
         region={region}
         api={api}
         mode={mode}
@@ -520,31 +541,55 @@ export function Opportunities({
   const rows = data?.items ?? []
   return (
     <div className="market-body">
-      <div className="market-tools">
-        <label>
-          Action{' '}
-          <select
-            value={action}
-            onChange={(e) => updatePane({ action: e.target.value, offset: 0 })}
-          >
-            {['all', 'hold', 'supply'].map((a) => (
-              <option key={a} value={a}>
-                {a === 'all' ? 'All actions' : a}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Sort{' '}
-          <select
-            value={order}
-            onChange={(e) => updatePane({ order: e.target.value, offset: 0 })}
-          >
-            <option value="signal">Signal</option>
-            <option value="name">Item name</option>
-          </select>
-        </label>
+      <div
+        className="market-tools"
+        role="group"
+        aria-label="Opportunities view"
+      >
+        <button
+          type="button"
+          aria-pressed={houseView}
+          onClick={() => updatePane({ opportunityView: 'house' })}
+        >
+          House trends
+        </button>
+        <button
+          type="button"
+          aria-pressed={!houseView}
+          onClick={() => updatePane({ opportunityView: 'signals' })}
+        >
+          Signal scanner
+        </button>
       </div>
+      {!houseView && (
+        <div className="market-tools">
+          <label>
+            Action{' '}
+            <select
+              value={action}
+              onChange={(e) =>
+                updatePane({ action: e.target.value, offset: 0 })
+              }
+            >
+              {['all', 'hold', 'supply'].map((a) => (
+                <option key={a} value={a}>
+                  {a === 'all' ? 'All actions' : a}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Sort{' '}
+            <select
+              value={order}
+              onChange={(e) => updatePane({ order: e.target.value, offset: 0 })}
+            >
+              <option value="signal">Signal</option>
+              <option value="name">Item name</option>
+            </select>
+          </label>
+        </div>
+      )}
       <details className="market-replay" open={asOf ? true : undefined}>
         <summary>Historical replay</summary>
         <label>
@@ -565,50 +610,65 @@ export function Opportunities({
       {data?.snapshot && (
         <>
           <Snapshot info={data} />
-          {!rows.length && (
-            <p>
-              No qualifying signals in this house snapshot for the selected
-              action.
-            </p>
-          )}
-          {rows.map((r) => (
-            <details className="market-signal" key={r.rule + '-' + r.id}>
-              <summary>
-                <span>{r.title}</span>
-                <strong>{r.name ?? 'Item ' + r.id}</strong>
-              </summary>
-              <p>{r.evidence}</p>
-              <p>{r.next}</p>
-              {r.effectSource && (
-                <a href={r.effectSource} target="_blank" rel="noreferrer">
-                  Effect reference ↗{' '}
-                </a>
+          {houseView ? (
+            <HouseMarketOverview
+              data={data}
+              pane={pane}
+              updatePane={updatePane}
+              money={money}
+              when={when}
+              openItem={(id) => updatePane({ opportunityItem: id })}
+            />
+          ) : (
+            <>
+              {!rows.length && (
+                <p>
+                  No qualifying signals in this house snapshot for the selected
+                  action.
+                </p>
               )}
-              <button onClick={() => updatePane({ opportunityItem: r.id })}>
-                {asOf ? 'Inspect current listings' : 'Inspect item'}
-              </button>
-              <small> {r.version}</small>
-            </details>
-          ))}
-          {data.count > 30 && (
-            <div className="market-tools">
-              <small>
-                {offset + 1}–{Math.min(offset + 30, data.count)} of{' '}
-                {number(data.count)}
-              </small>
-              <button
-                disabled={!offset}
-                onClick={() => updatePane({ offset: Math.max(0, offset - 30) })}
-              >
-                Previous
-              </button>
-              <button
-                disabled={offset + 30 >= data.count}
-                onClick={() => updatePane({ offset: offset + 30 })}
-              >
-                Next
-              </button>
-            </div>
+              {rows.map((r) => (
+                <details className="market-signal" key={r.rule + '-' + r.id}>
+                  <summary>
+                    <span>{r.title}</span>
+                    <strong>{r.name ?? 'Item ' + r.id}</strong>
+                  </summary>
+                  <p>{r.evidence}</p>
+                  <p>{r.next}</p>
+                  {r.effectSource && (
+                    <a href={r.effectSource} target="_blank" rel="noreferrer">
+                      Effect reference ↗{' '}
+                    </a>
+                  )}
+                  <button onClick={() => updatePane({ opportunityItem: r.id })}>
+                    {asOf ? 'Inspect current listings' : 'Inspect item'}
+                  </button>
+                  <small> {r.version}</small>
+                </details>
+              ))}
+              {data.count > 30 && (
+                <div className="market-tools">
+                  <small>
+                    {offset + 1}–{Math.min(offset + 30, data.count)} of{' '}
+                    {number(data.count)}
+                  </small>
+                  <button
+                    disabled={!offset}
+                    onClick={() =>
+                      updatePane({ offset: Math.max(0, offset - 30) })
+                    }
+                  >
+                    Previous
+                  </button>
+                  <button
+                    disabled={offset + 30 >= data.count}
+                    onClick={() => updatePane({ offset: offset + 30 })}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </>
       )}
