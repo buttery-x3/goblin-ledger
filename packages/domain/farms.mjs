@@ -3,13 +3,14 @@ export const gatheringGuide = 'https://afleurdenet.com/where-to-find-blindweed-a
 
 const routeData = [
   ['skulk-rock', 'Skulk Rock', 'The Hinterlands', 'Gathering', 77, 42, 'Approach the cave by the river. Make a short detour from the herbalism circuit and return to the entrance.', herbalismGuide],
-  ['jintha-alor', 'Jintha’Alor', 'The Hinterlands', 'Gathering', 79, 46, 'Reach the upper terrace and check its caves. Elite trolls guard the approach. Stealth can change the time and risk of this loop.', gatheringGuide],
-  ['maraudon-purple', 'Maraudon · Purple entrance', 'Desolace', 'Instance', 25, 54, 'Follow the Purple entrance toward the Orange side. Track the full exit and reset in your elapsed time. Solo completion and the sustained reset limit need local evidence.', gatheringGuide],
+  ['jintha-alor', 'Jintha’Alor', 'The Hinterlands', 'Gathering', 79, 46, 'Reach the upper terrace and check its caves. Elite trolls guard the approach. Stealth can change the time and risk of this loop.', gatheringGuide, 'Elite trolls guard the terrace. Check the approach before committing.'],
+  ['maraudon-purple', 'Maraudon · Purple entrance', 'Desolace', 'Instance', 25, 54, 'Follow the Purple entrance toward the Orange side. Track the full exit and reset in your elapsed time. Solo completion and the sustained reset limit need local evidence.', gatheringGuide, 'Check dungeon access, group needs and reset time.'],
 ];
 
-export const routesCatalog = routeData.map(([id,name,zone,type,x,y,notes,source]) => ({
+export const routesCatalog = routeData.map(([id,name,zone,type,x,y,notes,source,accessCheck=null]) => ({
   id, name, zone, type, revision: 1, output: 'Ghost Mushroom', outputId: 8845,
   requirements: 'Herbalism 245', profession: 'Herbalism', skill: 245, notes, source,
+  accessCheck,
   evidence: 'Guide-reported locality', exposure: null, coverage: 0,
   geometry: {
     id: id + '-locality', space: 'world-schematic', mapId: zone, continent: zone === 'Desolace' ? 'Kalimdor' : 'Eastern Kingdoms',

@@ -21,6 +21,7 @@ import {
 } from './market-store.mjs'
 
 import { registerCrosscheck } from './market-crosscheck.mjs'
+import { houseOverview } from './market-overview.mjs'
 const day = 24 * HOUR
 const bad = (message, statusCode = 400) =>
   Object.assign(new Error(message), { statusCode })
@@ -510,6 +511,9 @@ export function registerMarket(app, ctx) {
     if (clock !== undefined && (!Number.isSafeInteger(clock) || clock < 0))
       throw bad('Invalid replay time')
     const info = envelope(profile, clock)
+    if (req.query.view === 'house') {
+      return { ...info, asOf: clock ?? null, overview: houseOverview(profile.db, info.snapshot, req.query.window, clock) }
+    }
     const offset = Number(req.query.offset ?? 0),
       limit = positive(req.query.limit ?? 50, 'page size', 100)
     if (!Number.isSafeInteger(offset) || offset < 0)

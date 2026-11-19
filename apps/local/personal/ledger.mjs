@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { TransferBalances, moveLots } from './transfers.mjs'
 import { readExport, normaliseCharacters, hash, label, integer } from './export.mjs'
 
 const ready = new WeakSet()
@@ -98,7 +99,19 @@ export function transaction(profile,input) {
   db.prepare('INSERT INTO personal_tx VALUES(?,?,?,?)').run(p,tx.id,tx.at,JSON.stringify(tx))
   return {id:tx.id,status:'recorded'}
 }
-function settle(tx,asset) {
+function settle(tx,asset,balances) {
+  if (tx.action==='transfer') {
+    const supported=Math.min(tx.quantity,balances.available(tx.owner))
+    const moved=moveLots(asset.lots,tx.owner,tx.recipient,supported)
+    balances.adjust(tx.owner,-moved)
+    balances.receive(tx.recipient,moved)
+    tx.unallocatedQuantity=tx.quantity-moved
+    tx.transferStatus=tx.unallocatedQuantity ? 'needs-reconciliation' : 'confirmed'
+    if (tx.unallocatedQuantity) balances.uncertain=true
+    return
+  }
+  if (balances?.handoffTimes.get(tx.owner)?.has(tx.at)) balances.uncertain=true
+  balances?.adjust(tx.owner,tx.action==='sale'?-tx.quantity:tx.quantity,tx.action==='opening')
   if (tx.action!=='sale') {
     let remaining=tx.quantity
     if (tx.action==='opening') {
@@ -117,11 +130,18 @@ function settle(tx,asset) {
   const gross=BigInt(tx.quantity)*BigInt(tx.unitCopper)
   const proceeds=gross-gross*BigInt(tx.feeBps)/10000n-BigInt(tx.depositPaidCopper)+BigInt(tx.depositRefundCopper)
   let remaining=tx.quantity,known=0,basis=0n
+  const displaced=new Map()
   for (const lot of asset.lots) {
     if (!remaining) break
     const used=Math.min(lot.left,remaining)
     lot.left-=used;remaining-=used
     if (lot.unit!==null) {known+=used;basis+=BigInt(lot.unit)*BigInt(used)}
+    if (balances && used && lot.owner!==tx.owner) displaced.set(lot.owner,(displaced.get(lot.owner)??0)+used)
+  }
+  // A sale debits the selling character's units while its accounting basis follows
+  // the entire pool's FIFO. Other alts retain custody of their unsold units.
+  for (const [id,quantity] of displaced) {
+    if (moveLots(asset.lots,tx.owner,id,quantity)<quantity) balances.uncertain=true
   }
   asset.realisedKnownCopper+=proceeds*BigInt(known)/BigInt(tx.quantity)-basis
   asset.unknownSold+=tx.quantity-known
@@ -148,6 +168,13 @@ export function listPositions(profile) {
   }
   const history=db.prepare("SELECT id,scope,at,seq,record FROM personal_observation WHERE pool=? ORDER BY at,seq").all(p)
   const receipts=db.prepare('SELECT at,record FROM personal_tx WHERE pool=? ORDER BY at,rowid').all(p)
+    .map(row=>({at:row.at,transaction:JSON.parse(row.record)}))
+  const transfers=new Map()
+  for (const {transaction:tx} of receipts) {
+    if (tx.action!=='transfer') continue
+    if (!transfers.has(tx.asset)) transfers.set(tx.asset,new TransferBalances())
+    transfers.get(tx.asset).markHandoff(tx)
+  }
   // At the same second actual capture order is unknown. Observe unknown units before allocating known gain.
   const timeline=[...history,...receipts].sort((a,b)=>a.at-b.at)
   const observedByOwner=new Map()
@@ -157,6 +184,10 @@ export function listPositions(profile) {
       for (const item of JSON.parse(row.record)) {
         const a=get(item)
         totals.set(a.asset,(totals.get(a.asset)??0)+item.quantity)
+      }
+      for (const [key,balances] of transfers) {
+        const usable=balances.observe(row.id,row.scope,row.at,totals.get(key)??0)
+        if (!usable) totals.delete(key)
       }
       const byScope=observedByOwner.get(row.id)??new Map()
       byScope.set(row.scope,totals);observedByOwner.set(row.id,byScope)
@@ -168,25 +199,31 @@ export function listPositions(profile) {
         const other=row.scope==='bank'?'bags':'bank'
         const previous=byScope.get(other),sibling=previous?.get(key)??0
         const sameTime=byScope.get(other+'At')===row.at
-        const observed=sameTime?count+sibling:Math.max(count,sibling)
+        const balances=transfers.get(key)
+        const observed=balances ? balances.available(row.id) : sameTime ? count+sibling : Math.max(count,sibling)
         if (observed>owned) a.lots.push({owner:row.id,left:observed-owned,unit:null,physicalOnly:true})
         if (sibling && !sameTime) a.timingUncertain=true
       }
       byScope.set(row.scope+'At',row.at)
       continue
     }
-    const tx=JSON.parse(row.record),a=get(tx)
+    const tx=row.transaction,a=get(tx),balances=transfers.get(tx.asset)
     a.transactions.push(tx)
     const observed=clocks.get(tx.owner),times=scopeTimes.get(tx.owner)
-    if (observed===undefined || (tx.action!=='opening' && tx.at>observed)) a.economic+=(tx.action==='sale'?-1:1)*tx.quantity
+    if (!balances && (observed===undefined || (tx.action!=='opening' && tx.at>observed))) a.economic+=(tx.action==='sale'?-1:1)*tx.quantity
     if (observed===tx.at || (times?.bank && times.bags && tx.at>Math.min(times.bank,times.bags) && tx.at<=Math.max(times.bank,times.bags))) a.timingUncertain=true
-    settle(tx,a)
+    settle(tx,a,balances)
   }
   for (const row of db.prepare('SELECT * FROM personal_notes WHERE pool=?').all(p)) {
     const [item,variant,binding]=row.asset.split('/')
     get({itemId:Number(item),variant,binding}).note=JSON.parse(row.record)
   }
   return Array.from(assets.values()).map(a=>{
+    const balances=transfers.get(a.asset)
+    if (balances) {
+      a.economic=balances.total()
+      a.timingUncertain ||= balances.uncertain
+    }
     const {lots,realisedKnownCopper,...result}=a
     const knownUnits=lots.reduce((n,l)=>l.unit===null?n:n+l.left,0),bookUnits=lots.reduce((n,l)=>n+l.left,0)
     return {...result,knownUnits,unknownUnits:Math.max(0,a.economic-knownUnits),unreconciledUnits:bookUnits-a.economic,

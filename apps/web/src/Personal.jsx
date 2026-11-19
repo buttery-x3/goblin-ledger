@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { progressionForCharacter } from '../../../packages/domain/progression.mjs'
+import { activityAccess } from '../../../packages/domain/character-activities.mjs'
+import { CharacterActivities } from './CharacterActivities.jsx'
 import './personal.css'
 
 const fmt=Intl.NumberFormat()
@@ -19,25 +21,14 @@ function usePersonal(api,route,mode,refreshKey) {
   return {data,error,reload:()=>bump(n=>n+1)}
 }
 function Notice({msg}){return msg?<p className="personal-notice" role="status">{msg}</p>:null}
-function eligibility(c,route) {
-
-  if (!route) return null
-  if (route.minLevel && c.level<route.minLevel) return 'Level '+route.minLevel+' required'
-  if (route.profession && route.skill) {
-    const found=c.professions.find(p=>p.name.toLowerCase()===String(route.profession).toLowerCase())
-    if (!found) return 'Profession unobserved'
-    if (found.skill<route.skill) return route.profession+' '+route.skill+' required'
-    return 'Recorded requirements met'
-  }
-  return null
-}
-export function Characters({api,mode,refreshKey,routes=[],selectedRoute}) {
+export function Characters({api,mode,region,refreshKey,routes=[],selectedRoute,onSelectRoute}) {
   const {data,error}=usePersonal(api,'characters',mode,refreshKey)
   const [completion,setCompletion]=useState({})
   useEffect(()=>{let active=true;setCompletion({});api('/progression/account').then(r=>{if(active)setCompletion(r.completion||{})}).catch(()=>{});return ()=>{active=false}},[api,mode,refreshKey])
   if (!data) return <Notice msg={error||'Loading characters…'}/>
   const route=routes.find(r=>r.id===selectedRoute)
   return <div className="personal-pane"><Notice msg={error}/>
+    <CharacterActivities api={api} mode={mode} region={region} refreshKey={refreshKey} scope={data.scope} characters={data.characters} onSelectRoute={onSelectRoute}/>
     {!data.characters.length?<p>Install the addon in Settings, choose an account, then log out or reload WoW to save your first character observation.</p>:
       data.characters.map(c=>{
         const progress=progressionForCharacter(c,completion)
@@ -49,7 +40,7 @@ export function Characters({api,mode,refreshKey,routes=[],selectedRoute}) {
             <dt>Class challenge</dt><dd>{progress.classChallenge?.label||'No further recorded challenge'}</dd>
             {progress.professionChallenges?.length>0&&<><dt>Profession challenges</dt><dd>{progress.professionChallenges.map(p=>p.label).join(' · ')}</dd></>}
             {progress.recipe&&<><dt>Recipe</dt><dd>{progress.recipe.label}</dd></>}
-            {route&&<><dt>{route.name}</dt><dd>{eligibility(c,route)||'Review route requirements'}</dd></>}
+            {route&&<><dt>{route.name}</dt><dd>{activityAccess(route,c).reason}</dd></>}
           </dl></details>
       })}
   </div>
@@ -97,7 +88,8 @@ function PositionNote({api,pos,onDone}) {
 export function Positions({api,mode,region,refreshKey}) {
   const {data,error,reload}=usePersonal(api,'positions',mode,region+'|'+refreshKey)
   const {data:chars}=usePersonal(api,'characters',mode,refreshKey)
-  const characters=chars?.characters??[],names=Object.fromEntries(characters.map(c=>[c.id,c.name]))
+  const characters=chars?.scope===data?.scope ? chars?.characters??[] : []
+  const names=Object.fromEntries(characters.map(c=>[c.id,c.name]))
   return <div className="personal-pane"><details><summary>Record a transaction</summary><NewEntry api={api} characters={characters} onDone={reload}/></details>
     <Notice msg={error}/>{!data?<p>Loading positions…</p>:!data.positions.length?<p>No holdings observed. Import a character or enter an opening balance above.</p>:data.positions.map(p=>
       <details key={p.asset}><summary><strong>{p.valuation?.name||('Item '+p.itemId)}</strong> <span>{fmt.format(p.economic)} units · {p.binding}</span></summary>
@@ -112,6 +104,7 @@ export function Positions({api,mode,region,refreshKey}) {
           {p.timingUncertain&&<><dt>Reconciliation</dt><dd>Overlapping observations or same-second events leave the order uncertain.</dd></>}</dl>
         {p.locations.map((l,i)=><p key={i}>{names[l.id]??l.id} · {l.scope} · {fmt.format(l.quantity)} · {date(l.at)}</p>)}
         {p.receipts.map(r=><p key={r.id}>Sale · {date(r.at)} · {r.quantity} units · {gold(r.proceedsCopper)} proceeds</p>)}
+        {p.transactions?.filter(tx=>tx.action==='transfer').map(tx=><p key={tx.id}>Archived transfer · {date(tx.at)} · {fmt.format(tx.quantity)} units from {names[tx.owner]??tx.owner} to {names[tx.recipient]??tx.recipient}{tx.unallocatedQuantity>0 && ' · '+fmt.format(tx.unallocatedQuantity)+' units unresolved'}</p>)}
         <PositionNote api={api} pos={p} onDone={reload}/></details>)}
   </div>
 }

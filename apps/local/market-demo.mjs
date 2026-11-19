@@ -87,11 +87,19 @@ export function demoData(region) {
   ]
   const snapshots = [],
     details = []
+  // Preserve the current books used by craft quotes. The earlier observations
+  // give the house overview examples of both tightening and expanding supply.
+  const examples = new Map([
+    [2589, { ask: [125, 130, 140, 145, 160, 170, 180, 200], floor: [220, 210, 190, 180, 170, 150, 140, 125] }],
+    [4625, { ask: [540, 520, 490, 480, 460, 440, 420, 400], floor: [55, 65, 70, 73, 81, 85, 88, 90] }],
+  ])
   for (let i = 0; i < 8; i++) {
     const t = end - (7 - i) * HOUR
-    const items = base.map(([id, name, cls, ask, sell, tiers]) => {
+    const items = base.map(([id, name, cls, latestAsk, sell, tiers]) => {
+      const example = examples.get(id)
+      const ask = example?.ask[i] ?? latestAsk
       const floor =
-        id === 18945 ? [650, 680, 675, 700, 780, 800, 200, 750][i] : tiers[0][1]
+        id === 18945 ? [650, 680, 675, 700, 780, 800, 200, 750][i] : (example?.floor[i] ?? tiers[0][1])
       const listed = floor + tiers.slice(1).reduce((n, r) => n + r[1], 0)
       return {
         id,
@@ -103,7 +111,7 @@ export function demoData(region) {
           listed,
           ask,
           Math.min(listed, 12),
-          tiers[1]?.[0] ?? null,
+          tiers[1] ? tiers[1][0] + ask - latestAsk : null,
           floor,
           id === 940 ? null : 16,
           id === 940 ? null : ask * 16,
@@ -117,7 +125,7 @@ export function demoData(region) {
     for (const row of snap.items) row.source = 'demo'
     snapshots.push(snap)
   }
-  for (const [id, , , ask, , tiers] of base) {
+  for (const [id, , , , , tiers] of base) {
     const f = ['ask', 'listed', 'sold']
     const history = snapshots.map((s) => s.items.find((r) => r.id === id))
     const item = normalizeDetail(
@@ -127,7 +135,7 @@ export function demoData(region) {
         f,
         series: {
           t: history.map((r) => r.t),
-          ask: history.map(() => ask),
+          ask: history.map(r => r.ask),
           listed: history.map((r) => r.listed),
           sold: history.map(() => (id === 940 ? null : 2)),
         },

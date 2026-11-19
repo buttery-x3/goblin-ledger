@@ -6,6 +6,12 @@ import {getMarketBook, getMarketItem, getMarketSeries} from './market.mjs';
 import {registerCraftCatalog} from './craft-catalog.mjs';
 import {routeExposure} from './research.mjs';
 import {pool} from './personal/ledger.mjs';
+import {listCharacters} from './personal.mjs';
+import {getHouse,latest} from './market-store.mjs';
+import {starterRoutes} from '../../packages/domain/activity-routes.mjs';
+import {characterActivities,alchemyOpportunity} from '../../packages/domain/character-activities.mjs';
+
+const allRoutes = [...routesCatalog,...starterRoutes];
 import {allocate, allocationOptions, legacyAccount, prepareAllocations, realisedView, recordScope, undoAllocation} from './farm-receipts.mjs';
 import {apprenticeCrate, herbBundles, fragment, compareBox, compareCrate} from '../../packages/domain/farm-choices.mjs';
 
@@ -55,7 +61,7 @@ function historicalBasis(profile, row) {
     previous.method===row.method && previous.resolution===row.resolution).at(-1) ?? null;
 }
 
-function routeReport(profile, base, options, lookup, history) {
+function routeReport(profile, base, options, lookup, history, activityView) {
   const route = mergedRoute(profile.db,base);
   const actorId = options.characterId || null;
   if (actorId && (typeof actorId!=='string' || actorId.length>160)) fail('Invalid character ID');
@@ -66,6 +72,9 @@ function routeReport(profile, base, options, lookup, history) {
     saved = savedRuns(profile,route);
     scope = 'All characters · fallback';
   }
+  const completedBy = route.accessCheck ? profile.db.prepare(
+    "SELECT DISTINCT json_extract(details,'$.characterId') AS actor FROM farm_runs WHERE route=? AND revision=? AND COALESCE(account,?)=? AND json_type(details,'$.characterId')='text'"
+  ).all(route.id,route.revision,legacyAccount(profile),pool(profile)).map(row=>row.actor) : [];
   const draft = options.scenarios?.[route.id];
   const samples = draft ? [validRun(draft)] : saved.length ? saved : profile.mode === 'demo' && allowFallback ? fixtureRun(route) : [];
   if (draft) scope = 'Manual scenario';
@@ -73,12 +82,20 @@ function routeReport(profile, base, options, lookup, history) {
   else if (actorId && !samples.length) scope = 'Selected character · no runs';
   const prices = {}, previous = {};
   const itemIds = new Set([route.outputId,...samples.flatMap(r => r.haul.map(s => s.itemId))]);
-  const primaryOverride = options.unitCopper;
+  const primaryOverride = route.outputId === 8845 ? options.unitCopper : null;
   for (const id of itemIds) {
     const item = lookup(id);
     if (item) {
-      prices[id] = {ask:item.ask,sell:item.sell,t:item.t,house:item.house,source:item.source};
-      if (primaryOverride == null && samples.length) previous[id] = history(id,item);
+      prices[id] = {ask:item.ask,sell:item.sell,t:item.t,house:item.house,source:item.source,
+        listed:item.listed,method:item.method,resolution:item.resolution};
+      if (primaryOverride == null && (samples.length || (activityView && id===route.outputId))) {
+        previous[id] = history(id,item);
+        const prior = previous[id];
+        if (activityView && prior?.ask!=null && item.ask!=null) {
+          prices[id].priorAsk=prior.ask;
+          prices[id].priorTime=prior.t;
+        }
+      }
     }
   }
   if (primaryOverride != null) {
@@ -100,17 +117,17 @@ function routeReport(profile, base, options, lookup, history) {
       baselineTime=[...baseTimes][0];
     }
   }
-  const guideArticles = routeExposure(profile,route.id);
+  const guideArticles = activityView ? [] : routeExposure(profile,route.id);
   return {...route,...returns,approachMinutes,exposure:guideArticles.length,guideArticles,changeCopperPerHour,baselineTime,
     coverage:samples.length,quote:prices[route.outputId] ?? null,feeBps:options.feeBps ?? 500,
-    actorId,sampleScope:scope,sampleLimit:500,
+    actorId,completedBy,sampleScope:scope,sampleLimit:500,
     yieldBasis:draft ? 'Scenario' : saved.length ? 'Personal runs' : samples.length ? 'Demo scenario' : 'Yield unknown',
     priceBasis:primaryOverride != null ? 'Scenario' : profile.mode === 'demo' ? 'Demo house' : prices[route.outputId]?.ask != null ? 'House ask' : 'Price unknown',
-    realised:!draft && saved.length ? realisedView(profile,saved,{...fixed,prices}) : null,
+    realised:!activityView && !draft && saved.length ? realisedView(profile,saved,{...fixed,prices}) : null,
     runHistory:saved.slice(0,25)};
 }
 
-export function getRoutes(profile, options = {}) {
+export function getRoutes(profile, options = {}, activityView = false) {
   initialise(profile.db);
   if (options.feeBps != null) checkedInt(options.feeBps,'Sale cut',0,10000);
   if (options.targetCopperPerHour != null) checkedInt(options.targetCopperPerHour,'Target hourly copper',0,1000000000);
@@ -124,12 +141,12 @@ export function getRoutes(profile, options = {}) {
     if (!prior.has(id)) prior.set(id,historicalBasis(profile,row));
     return prior.get(id);
   };
-  return routesCatalog.map(base => routeReport(profile,base,options,lookup,history));
+  return allRoutes.map(base => routeReport(profile,base,options,lookup,history,activityView));
 }
 
 function requireRoute(profile,id) {
   initialise(profile.db);
-  const base = routesCatalog.find(r => r.id === id);
+  const base = allRoutes.find(r => r.id === id);
   if (!base) fail('Unknown route',404);
   return mergedRoute(profile.db,base);
 }
@@ -145,6 +162,20 @@ function compareChoices(profile) {
 
 export function registerFarms(app,ctx) {
   registerCraftCatalog(app,ctx);
+  app.get('/api/v1/personal/characters/:id/activities', req => {
+    const profile=ctx.profile(), scope=pool(profile);
+    if (req.query.scope!=null && req.query.scope!==scope) fail('Account changed. Reload Characters.',409);
+    const actor=listCharacters(profile).find(c=>c.id===req.params.id);
+    if (!actor) fail('Character is unavailable in this account.',404);
+    const sessionMinutes=checkedInt(Number(req.query.sessionMinutes ?? 30),'Session minutes',1,1440);
+    const targetCopperPerHour=checkedInt(Number(req.query.targetCopperPerHour ?? 100000),'Target copper per hour',1,1000000000);
+    const routes=getRoutes(profile,{characterId:actor.id,sessionMinutes,targetCopperPerHour},true);
+    const house=getHouse(profile);
+    const snapshot=house && latest(profile.db,house.key);
+    return {scope,actorId:actor.id,mode:profile.mode,region:profile.region,house:house?.key ?? null,
+      marketTime:snapshot?.t ?? null,source:snapshot?.source ?? null,sessionMinutes,targetCopperPerHour,
+      activities:characterActivities(actor,routes),alchemy:alchemyOpportunity(actor,getMarketItem(profile,250946))};
+  });
   app.get('/api/v1/farms', () => ({routes:getRoutes(ctx.profile())}));
   app.post('/api/v1/farms/compare', req => ({routes:getRoutes(ctx.profile(),req.body ?? {})}));
   app.put('/api/v1/farms/:id', req => {

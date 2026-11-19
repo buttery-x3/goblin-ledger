@@ -1,5 +1,17 @@
 import {getCoreRowModel, getSortedRowModel} from '@tanstack/react-table';
 
+import {activityAccess} from '../../../packages/domain/character-activities.mjs';
+
+export function farmRowsForActor(routes, actorId, actor) {
+  if (!actorId) return routes;
+  return routes.map(route => {
+    const access = actor ? activityAccess(route,actor) : {state:'check',reason:'Character requirements unavailable.'};
+    if (access.state==='available' && route.actorId===actorId) return {...route,access};
+    return {...route,access,rateCopperPerHour:null,sessionGoldCopper:null,loops:null,
+      requiredUnitsPerHour:null,baselineTime:null};
+  });
+}
+
 const columns = [
   {id:'route',accessorKey:'name',header:'Route',sortingFn:'text',sortDescFirst:false},
   {id:'hour',accessorFn:route=>route.rateCopperPerHour ?? undefined,header:'Net / h',sortingFn:'basic',sortUndefined:'last',sortDescFirst:true},

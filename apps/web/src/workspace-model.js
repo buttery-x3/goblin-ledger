@@ -207,7 +207,7 @@ export function openTool(layout, type) {
 }
 
 // Select by route identity. The route's item or zone may be shared by any number of farms.
-export function selectFarm(layout, routeId, sourceId) {
+export function selectFarm(layout, routeId, sourceId, activity) {
   const sourceGroup = layout.groups.find((g) => g.tabs.some((t) => t.id === sourceId));
   const sourceTab = sourceGroup?.tabs.find((t) => t.id === sourceId);
   if (!routeId || !sourceTab) return layout;
@@ -240,5 +240,13 @@ export function selectFarm(layout, routeId, sourceId) {
   if (!next.groups.find((g) => g.id === target.id)?.tabs.some((t) => t.type === 'Farms' && t.id === tabId))
     return selected;
   next = activate(next, target.id, tabId);
-  return patchPane(next, tabId, { selectedRoute: routeId, revealRoute: routeId });
+  return patchPane(next, tabId, (tab) => ({
+    selectedRoute: routeId,
+    revealRoute: routeId,
+    ...(activity && {
+      actor: activity.actor,
+      sessionMinutes: activity.sessionMinutes,
+      farmOptions: { ...tab.farmOptions, targetCopperPerHour: activity.targetCopperPerHour },
+    }),
+  }));
 }
